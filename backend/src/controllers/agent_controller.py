@@ -55,6 +55,11 @@ def latest_session(client_id: str, agent_id: str):
     return agent_service.get_latest_session(client_id, agent_id)
 
 
+@router.delete("/sessions/{session_id}")
+def delete_session(session_id: int):
+    return agent_service.delete_session(session_id)
+
+
 @router.get("/catalog")
 def list_agents():
     return {"agents": agent_service.list_agents()}

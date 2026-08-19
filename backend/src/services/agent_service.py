@@ -470,6 +470,15 @@ def list_client_sessions(client_id: str, agent_id: str) -> AgentSessionListRespo
     return AgentSessionListResponse(sessions=items)
 
 
+def delete_session(session_id: int) -> dict:
+    with db_session:
+        session = AgentSession.get(id=session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        session.delete()
+    return {"ok": True}
+
+
 def get_latest_session(client_id: str, agent_id: str) -> AgentLatestSessionResponse:
     sessions = _sessions_for_client_agent(client_id, agent_id)
     if not sessions:

@@ -90,11 +90,38 @@
   background: rgba(225, 29, 46, 0.1);
 }
 
+.wf-session__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
 .wf-session__date {
   font-size: 10px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.38);
+}
+
+.wf-session__del {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.35);
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.wf-session:hover .wf-session__del {
+  opacity: 1;
+}
+
+.wf-session__del:hover {
+  color: #e11d2e;
 }
 
 .wf-session__preview {

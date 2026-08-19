@@ -2,7 +2,7 @@
  * Single switch for mock → real backend.
  * Flip to false when FastAPI routes are ready.
  */
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 const BASE = import.meta.env.VITE_API_URL || "";
 
@@ -200,12 +200,12 @@ export async function getMe() {
   return mockUser ? clone(mockUser) : null;
 }
 
-export async function login({ email, password }) {
+export async function login({ username, password }) {
   if (!USE_MOCK) {
     return realFetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ username, password }),
     });
   }
   await delay(280);
@@ -350,6 +350,10 @@ export async function listAgentSessions(clientId, agentId) {
     agent_id: agentId,
   });
   return realFetch(`/api/agents/sessions?${params}`);
+}
+
+export async function deleteAgentSession(sessionId) {
+  return realFetch(`/api/agents/sessions/${sessionId}`, { method: "DELETE" });
 }
 
 export async function getLatestAgentSession(clientId, agentId) {

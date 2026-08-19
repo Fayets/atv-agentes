@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Mail, Lock } from "lucide-react";
+import { User, Lock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ShineBorder } from "@/components/magicui/shine-border";
@@ -9,7 +9,7 @@ import { ShimmerButton } from "@/components/magicui/shimmer-button";
  * Sign In Form — Ruixen UI (21st.dev/@ruixen.ui)
  */
 export default function SignInForm({ onSubmit, error, submitting }) {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
   return (
@@ -19,24 +19,24 @@ export default function SignInForm({ onSubmit, error, submitting }) {
         className="grid gap-4"
         onSubmit={(e) => {
           e.preventDefault();
-          onSubmit?.({ email, password });
+          onSubmit?.({ username, password });
         }}
       >
         <div className="grid gap-2">
-          <Label htmlFor="email" className="text-white/70">
-            Email
+          <Label htmlFor="username" className="text-white/70">
+            Usuario
           </Label>
           <div className="relative">
-            <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
+            <User className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
             <Input
-              id="email"
-              type="email"
+              id="username"
+              type="text"
               autoComplete="username"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               className="pl-10"
-              placeholder="vos@atv.com"
+              placeholder="juan"
             />
           </div>
         </div>
@@ -60,10 +60,6 @@ export default function SignInForm({ onSubmit, error, submitting }) {
         </div>
 
         {error ? <p className="text-sm text-red-400">{error}</p> : null}
-
-        <p className="text-xs text-white/35">
-          Demo — cualquier email y contraseña.
-        </p>
 
         <ShimmerButton
           type="submit"

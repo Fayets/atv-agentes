@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ArrowLeft, Loader2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { CATEGORY_LABELS, chatAgent, getAgentHistory, listAgentSessions, runAgent } from "@/lib/api";
+import { CATEGORY_LABELS, chatAgent, deleteAgentSession, getAgentHistory, getClientById, listAgentSessions, runAgent } from "@/lib/api";
 import { AgentWorkflow, NODE_META } from "@/components/agent/agent-workflow";
 import "@/components/agent/agent-workflow.css";
 import { AgentChat } from "@/components/agent/agent-chat";
@@ -85,6 +85,7 @@ export default function AgentDocView({ agent, category, onClose }) {
   const { clientId } = useParams();
   const agentName = agent?.name || "Agente";
   const categoryLabel = CATEGORY_LABELS[category] || category || "Agente";
+  const clientName = getClientById(clientId)?.name || clientId || "Cliente";
   const [sessionId, setSessionId] = useState(null);
   const [nodes, setNodes] = useState(() => seed(agentName));
   const [openId, setOpenId] = useState(null);
@@ -140,6 +141,17 @@ export default function AgentDocView({ agent, category, onClose }) {
     setOpenId(null);
     setProcessStep("idle");
     setChatStatus("ready");
+  };
+
+  const deleteSession = async (e, sid) => {
+    e.stopPropagation();
+    try {
+      await deleteAgentSession(sid);
+      setSessions((prev) => prev.filter((s) => s.session_id !== sid));
+      if (activeSessionId === sid) startNewChat();
+    } catch {
+      // silencioso
+    }
   };
 
   const openSession = async (sid) => {
@@ -262,17 +274,29 @@ export default function AgentDocView({ agent, category, onClose }) {
         {sessions.length > 0 ? (
           <div className="wf-sessions">
             {sessions.map((item) => (
-              <button
+              <div
                 key={item.session_id}
-                type="button"
                 className={`wf-session${activeSessionId === item.session_id ? " is-active" : ""}`}
+                role="button"
+                tabIndex={0}
                 onClick={() => openSession(item.session_id)}
+                onKeyDown={(e) => e.key === "Enter" && openSession(item.session_id)}
               >
-                <span className="wf-session__date">{formatSessionDate(item.updated_at)}</span>
+                <div className="wf-session__top">
+                  <span className="wf-session__date">{formatSessionDate(item.updated_at)}</span>
+                  <button
+                    type="button"
+                    className="wf-session__del"
+                    aria-label="Borrar conversación"
+                    onClick={(e) => deleteSession(e, item.session_id)}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
                 <span className="wf-session__preview">
                   {item.preview?.trim() || `Conversación #${item.session_id}`}
                 </span>
-              </button>
+              </div>
             ))}
           </div>
         ) : null}
@@ -301,7 +325,7 @@ export default function AgentDocView({ agent, category, onClose }) {
                   <ArrowLeft className="size-4" />
                 </button>
                 <div className="wf-output__meta">
-                  <p>Salida</p>
+                  <p>{clientName}</p>
                   <h2>{agentName}</h2>
                 </div>
                 <button type="button" className="wf-new-chat" onClick={startNewChat}>

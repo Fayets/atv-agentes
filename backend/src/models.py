@@ -5,6 +5,16 @@ from pony.orm import LongStr, Optional, PrimaryKey, Required, Set
 from src.db import db
 
 
+class User(db.Entity):
+    id = PrimaryKey(int, auto=True)
+    username = Required(str, unique=True)
+    hashed_password = Required(str)
+    role = Required(str, default="client_admin")
+    client_id = Optional(str)
+    is_active = Required(bool, default=True)
+    created_at = Required(datetime)
+
+
 class Client(db.Entity):
     id = PrimaryKey(str)
     name = Required(str)

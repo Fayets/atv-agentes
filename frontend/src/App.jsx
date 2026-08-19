@@ -3,7 +3,6 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
-import EntriesPage from "./pages/EntriesPage";
 import TonePage from "./pages/TonePage";
 import AgentsPage from "./pages/AgentsPage";
 import ConnectionsPage from "./pages/ConnectionsPage";
@@ -42,14 +41,6 @@ export default function App() {
             element={
               <ProtectedRoute roles={["superadmin", "client_admin"]}>
                 <DashboardPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard/:clientId/entries"
-            element={
-              <ProtectedRoute roles={["superadmin", "client_admin"]}>
-                <EntriesPage />
               </ProtectedRoute>
             }
           />

@@ -20,16 +20,16 @@ export default function LoginPage() {
     return <Navigate to={dest} replace />;
   }
 
-  async function handleSubmit({ email, password }) {
+  async function handleSubmit({ username, password }) {
     setError("");
     setSubmitting(true);
     try {
-      await api.login({ email, password });
+      await api.login({ username, password });
       const me = await api.getMe();
       setUser(me);
       navigate(`/dashboard/${me.client_id || "c1"}`);
     } catch {
-      setError("Email o contraseña incorrectos.");
+      setError("Usuario o contraseña incorrectos.");
       setSubmitting(false);
     }
   }

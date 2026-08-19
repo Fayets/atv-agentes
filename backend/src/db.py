@@ -13,6 +13,28 @@ def init_db():
         print("init_db: DB_HOST vacío — skip bind (completar backend/.env)")
         return
 
+    import psycopg2
+
+    raw = psycopg2.connect(
+        host=host,
+        port=config("DB_PORT", cast=int),
+        dbname=config("DB_NAME"),
+        user=config("DB_USER"),
+        password=config("DB_PASSWORD"),
+        sslmode="require",
+    )
+    raw.autocommit = True
+    cur = raw.cursor()
+
+    # Migración previa al mapping: renombrar email → username en "user"
+    try:
+        cur.execute('ALTER TABLE "user" RENAME COLUMN email TO username')
+        print("init_db: columna email renombrada a username.")
+    except Exception:
+        pass  # ya fue renombrada o no existe la tabla todavía
+
+    cur.close()
+    raw.close()
     db.bind(
         provider="postgres",
         host=host,
@@ -23,6 +45,7 @@ def init_db():
         sslmode="require",
     )
     db.generate_mapping(create_tables=True)
+
     alters = [
         ('"Agent"', "system_prompt"),
         ('"Agent"', "tone_doc"),
