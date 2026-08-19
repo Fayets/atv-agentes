@@ -1,0 +1,440 @@
+.brain-shell,
+.brain-shell--map {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  /* Negro uniforme; el rojo queda suave en el centro del lienzo, sin corte con el header */
+  background-color: #000000;
+  background-image: radial-gradient(
+    ellipse 50% 45% at 50% 50%,
+    rgba(225, 29, 46, 0.1),
+    transparent 72%
+  );
+}
+
+.brain-shell.is-panning {
+  cursor: grabbing;
+}
+
+.brain-viewport-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Anclado al centro real del shell; el translate(-50%,-50%) vive en la cadena de transform */
+.brain-viewport {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+/* Tween de cámara al abrir/cerrar una neurona (interacción del reel) */
+.brain-viewport.is-tween {
+  transition: transform 0.28s cubic-bezier(0.22, 0.8, 0.2, 1);
+}
+
+.brain-svg--enter {
+  animation: brain-svg-enter 0.22s ease-out both;
+}
+
+/* Polvo núcleo → neurona: drift suave (GPU) */
+.brain-stem-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  will-change: transform, opacity;
+  animation: brain-stem-drift var(--drift, 3.4s) ease-in-out infinite alternate;
+}
+
+@keyframes brain-stem-drift {
+  from {
+    transform: translate(0, 0);
+    opacity: 0.35;
+  }
+  to {
+    transform: translate(var(--dx, 3px), var(--dy, -3px));
+    opacity: 0.9;
+  }
+}
+
+/* Núcleo: pulso muy leve en algunos puntos */
+.brain-core__nodes circle:nth-child(4n) {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: brain-core-twinkle 3.6s ease-in-out infinite alternate;
+}
+
+.brain-core__nodes circle:nth-child(4n + 2) {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: brain-core-twinkle 4.4s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes brain-core-twinkle {
+  from {
+    opacity: 0.45;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes brain-svg-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.brain-svg {
+  display: block;
+  overflow: visible;
+  user-select: none;
+}
+
+.brain-hub__name {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  fill: #fff;
+  fill-opacity: 0.5;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+/* Halo oscuro detrás de los textos del SVG — legibles sobre líneas y estrellas */
+.brain-cat-title,
+.brain-cat-sub,
+.brain-focus-title,
+.brain-focus-sub,
+.brain-leaf-label,
+.brain-ghost-label,
+.brain-neighbor-name,
+.brain-agent-name,
+.brain-empty-hint {
+  paint-order: stroke;
+  stroke: rgba(5, 8, 16, 0.85);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* Sin animación continua en el núcleo: era la principal fuente de repintado */
+
+.brain-cat-title {
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  font-weight: 500;
+  text-transform: uppercase;
+  fill: rgba(255, 255, 255, 0.9);
+}
+
+.brain-cat-sub {
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  font-weight: 400;
+  fill: rgba(255, 255, 255, 0.4);
+}
+
+.brain-leaf-label {
+  font-family: var(--font-body);
+  font-size: 10.5px;
+  fill: rgba(255, 255, 255, 0.8);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.brain-leaf:hover .brain-leaf-label {
+  opacity: 1;
+  fill: #fff;
+}
+
+/* En la vista abierta los títulos de las hojas quedan siempre visibles */
+.brain-leaf-label--on {
+  opacity: 0.92;
+  font-size: 12.5px;
+}
+
+.brain-root:hover circle:first-child {
+  fill-opacity: 0.32;
+}
+
+/* Vista de categoría abierta */
+.brain-focus-title {
+  font-family: var(--font-body);
+  font-size: 22px;
+  letter-spacing: 0.01em;
+  font-weight: 600;
+  font-style: normal;
+  fill: rgba(255, 255, 255, 0.95);
+}
+
+.brain-focus-sub {
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0;
+  font-weight: 400;
+  fill: rgba(255, 255, 255, 0.48);
+}
+
+/* Vecinas del carousel asomando a los costados */
+/* Costados apagados — solo opacity (los filter: grayscale mataban el FPS) */
+.brain-neighbor--off {
+  opacity: 0.2;
+}
+
+.brain-neighbor--off:hover {
+  opacity: 0.38;
+}
+
+.brain-neighbor-name {
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  font-weight: 500;
+  fill: rgba(180, 190, 210, 0.55);
+}
+
+/* Encendido liviano: solo opacity, sin filter */
+.brain-neuron--on {
+  animation: brain-light-up 0.28s ease-out both;
+}
+
+@keyframes brain-light-up {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Vista interna de la neurona: nombre de cada agente bajo su nodo */
+.brain-agent-name {
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0;
+  font-weight: 500;
+  fill: rgba(255, 255, 255, 0.82);
+}
+
+.brain-agent-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: brain-agent-pulse 2.4s ease-in-out infinite;
+  animation-delay: var(--pulse, 0s);
+}
+
+@keyframes brain-agent-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+.brain-agent-group {
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+  fill: rgba(255, 255, 255, 0.65);
+}
+
+/* Marca de agua gigante del departamento */
+.brain-watermark {
+  font-family: var(--font-body);
+  font-size: 140px;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  font-style: normal;
+  fill: rgba(255, 255, 255, 0.04);
+  pointer-events: none;
+  user-select: none;
+}
+
+.brain-ghost-label {
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0;
+  fill-opacity: 0.8;
+}
+
+.brain-empty-hint {
+  font-family: var(--font-body);
+  font-size: 16px;
+  fill: rgba(255, 255, 255, 0.6);
+}
+
+.brain-spin {
+  animation: brain-spin 2.8s linear infinite;
+}
+
+.brain-draw-line {
+  opacity: 0.95;
+}
+
+/* Vuelo línea → anillo: pista al compositor para animar sin repintar */
+.brain-flight {
+  will-change: transform;
+}
+
+.brain-reveal {
+  opacity: 0;
+  animation: brain-fade-in 0.2s ease-out forwards;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes brain-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes brain-fade-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes brain-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Pop de las raíces cuando se forma el anillo */
+.brain-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: brain-pop-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.35) both;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes brain-pop-in {
+  from {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.brain-carousel {
+  position: absolute;
+  left: 50%;
+  bottom: 1.1rem;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem;
+  border-radius: var(--radius-pill);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 4;
+}
+
+.brain-carousel .btn {
+  height: 2.4rem;
+  min-width: 2.4rem;
+  padding: 0;
+  font-size: 1.1rem;
+}
+
+.brain-carousel .brain-carousel__map {
+  padding: 0 1.1rem;
+  font-size: 0.7rem;
+}
+
+.brain-carousel .btn.is-active {
+  background: var(--accent);
+  color: #0b0607;
+  border-color: transparent;
+}
+
+.brain-zoom {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.35rem;
+  border-radius: var(--radius-pill);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.brain-zoom .btn {
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+}
+
+.brain-error {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 1.5rem 1.75rem;
+  border-radius: var(--radius);
+  text-align: center;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  max-width: 20rem;
+}
+
+.brain-error p {
+  margin: 0 0 1rem;
+  color: var(--ink-dim);
+}
+
+.brain-ghost:hover circle[stroke] {
+  stroke-opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brain-viewport.is-tween {
+    transition: none;
+  }
+
+  .brain-svg--enter,
+  .brain-reveal,
+  .brain-pop,
+  .brain-neuron--on,
+  .brain-spin,
+  .brain-stem-dot,
+  .brain-core__nodes circle,
+  .brain-agent-halo {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+  }
+
+  /* Las líneas se dibujan con dashoffset inline; acá quedan visibles de entrada */
+  .brain-draw-line {
+    animation: none !important;
+    stroke-dasharray: none !important;
+    stroke-dashoffset: 0 !important;
+  }
+
+  /* Sin vuelo línea → anillo: salta directo a la posición final */
+  .brain-flight {
+    transition: none !important;
+  }
+}

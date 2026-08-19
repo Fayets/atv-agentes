@@ -1,0 +1,38 @@
+:root {
+  --bg: #000000;
+  --bg2: #0a0a0a;
+  --bg3: #111111;
+  --ink: #ffffff;
+  --ink-dim: rgba(255, 255, 255, 0.65);
+  --muted: rgba(255, 255, 255, 0.4);
+
+  --accent: #e11d2e;
+  --accent-bright: #ff3b4a;
+  --accent-deep: #9b0f1c;
+  --accent-soft: rgba(225, 29, 46, 0.16);
+  --accent-grad: linear-gradient(135deg, #b01020 0%, #e11d2e 48%, #ff4d5c 100%);
+  --glow: rgba(225, 29, 46, 0.45);
+  --glow-soft: rgba(255, 59, 74, 0.22);
+
+  /* aliases usados por componentes existentes */
+  --wine: var(--accent);
+  --wine-bright: var(--accent-bright);
+
+  --line: rgba(255, 255, 255, 0.08);
+  --line-active: rgba(255, 59, 74, 0.55);
+  --glass: rgba(10, 10, 10, 0.68);
+  --glass-strong: rgba(8, 8, 8, 0.82);
+
+  --radius: 18px;
+  --radius-lg: 28px;
+  --radius-pill: 999px;
+
+  --cat-marketing: #ff5a1f;
+  --cat-bases: #c9a0ff;
+  --cat-ventas: #e8a84a;
+  --cat-escala: #7ec8ff;
+
+  --font-body: "Roboto", system-ui, sans-serif;
+  --font-chrome: "Roboto", system-ui, sans-serif;
+  --font-accent: "Roboto", system-ui, sans-serif;
+}
