@@ -33,6 +33,25 @@ def init_db():
     except Exception:
         pass  # ya fue renombrada o no existe la tabla todavía
 
+    # Título editable de conversaciones
+    for table in ('"AgentSession"', "agentsession"):
+        try:
+            cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS title TEXT")
+        except Exception:
+            pass
+
+    # Adjuntos opcional en ejemplos de agente
+    for table in ('"AgentExample"', "agentexample"):
+        for col, typ in (
+            ("media_type", "TEXT"),
+            ("file_data", "TEXT"),
+            ("filename", "TEXT"),
+        ):
+            try:
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {typ}")
+            except Exception:
+                pass
+
     cur.close()
     raw.close()
     db.bind(

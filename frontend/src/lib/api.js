@@ -40,7 +40,7 @@ export const CATEGORY_AGENTS = {
     { id: "vt2", name: "Proceso de Preaudit (trigger)", icon: "search" },
     { id: "vt3", name: "Proceso de Venta (call)", icon: "chat" },
     { id: "vt4", name: "VSL Chat", icon: "send" },
-    { id: "vt5", name: "Presentación de Resultados", icon: "chart" },
+    { id: "vt5", name: "Presentación de Venta", icon: "chart" },
     { id: "vt6", name: "Landing (Thank You)", icon: "flow" },
   ],
   escala: [
@@ -137,7 +137,17 @@ async function realFetch(path, options = {}) {
   });
   if (res.status === 204) return null;
   if (!res.ok) {
-    const err = new Error(`HTTP ${res.status}`);
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+      else if (Array.isArray(body?.detail) && body.detail[0]?.msg) {
+        detail = body.detail.map((d) => d.msg).join("; ");
+      }
+    } catch {
+      /* ignore */
+    }
+    const err = new Error(detail);
     err.status = res.status;
     throw err;
   }
@@ -356,6 +366,14 @@ export async function deleteAgentSession(sessionId) {
   return realFetch(`/api/agents/sessions/${sessionId}`, { method: "DELETE" });
 }
 
+export async function renameAgentSession(sessionId, title) {
+  return realFetch(`/api/agents/sessions/${sessionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
 export async function getLatestAgentSession(clientId, agentId) {
   const params = new URLSearchParams({
     client_id: apiClientId(clientId),
@@ -401,5 +419,36 @@ export async function saveClaudeKey(apiKey) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ api_key: apiKey }),
+  });
+}
+
+export async function getAgentExamples(agentId) {
+  return realFetch(`/api/agents/examples/${agentId}`);
+}
+
+export async function createAgentExample(agentId, title, content, extra = {}) {
+  return realFetch("/api/agents/examples", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      agent_id: agentId,
+      title,
+      content,
+      media_type: extra.media_type || null,
+      file_data: extra.file_data || null,
+      filename: extra.filename || null,
+    }),
+  });
+}
+
+export async function extractExampleDocument(file) {
+  const form = new FormData();
+  form.append("file", file);
+  return realFetch("/api/agents/examples/extract", { method: "POST", body: form });
+}
+
+export async function deleteAgentExample(exampleId) {
+  return realFetch(`/api/agents/examples/${exampleId}`, {
+    method: "DELETE",
   });
 }

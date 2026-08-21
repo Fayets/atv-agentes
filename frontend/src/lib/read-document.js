@@ -1,5 +1,5 @@
 const TEXT_EXT = [".md", ".txt", ".csv", ".json"];
-const ACCEPT_EXT = [".md", ".txt", ".pdf"];
+const ACCEPT_EXT = [".md", ".txt", ".pdf", ".docx"];
 const MAX_BYTES = 10 * 1024 * 1024;
 
 export const DOCUMENT_ACCEPT = ACCEPT_EXT.join(",");
@@ -7,7 +7,7 @@ export const DOCUMENT_ACCEPT = ACCEPT_EXT.join(",");
 export function documentError(file) {
   if (!file) return "Seleccioná un archivo.";
   const lower = file.name.toLowerCase();
-  if (!ACCEPT_EXT.some((ext) => lower.endsWith(ext))) return "Solo .md, .txt o .pdf.";
+  if (!ACCEPT_EXT.some((ext) => lower.endsWith(ext))) return "Solo .md, .txt, .docx o .pdf.";
   if (file.size > MAX_BYTES) return "Máximo 10MB.";
   return "";
 }

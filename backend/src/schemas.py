@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -40,7 +42,12 @@ class AgentSessionSummary(BaseModel):
     created_at: str
     updated_at: str
     preview: str
+    title: str = ""
     message_count: int
+
+
+class AgentSessionRenameRequest(BaseModel):
+    title: str
 
 
 class AgentSessionListResponse(BaseModel):
@@ -50,3 +57,23 @@ class AgentSessionListResponse(BaseModel):
 class AgentLatestSessionResponse(BaseModel):
     session_id: int | None = None
     messages: list[dict] = Field(default_factory=list)
+
+
+class AgentExampleCreate(BaseModel):
+    agent_id: str
+    title: str
+    content: str
+    media_type: str | None = None
+    file_data: str | None = None
+    filename: str | None = None
+
+
+class AgentExampleResponse(BaseModel):
+    id: int
+    agent_id: str
+    title: str
+    content: str
+    created_at: datetime
+    media_type: str | None = None
+    filename: str | None = None
+    has_file: bool = False

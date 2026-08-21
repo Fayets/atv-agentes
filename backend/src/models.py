@@ -46,6 +46,7 @@ class AgentSession(db.Entity):
     id = PrimaryKey(int, auto=True)
     client = Required(Client)
     agent_id = Required(str)
+    title = Optional(str)
     created_at = Required(datetime)
     updated_at = Required(datetime)
     messages = Set("AgentMessage")
@@ -57,3 +58,14 @@ class AgentMessage(db.Entity):
     role = Required(str)
     content = Required(LongStr)
     created_at = Required(datetime)
+
+
+class AgentExample(db.Entity):
+    id = PrimaryKey(int, auto=True)
+    agent_id = Required(str)
+    title = Required(str)
+    content = Required(LongStr)
+    created_at = Required(datetime)
+    media_type = Optional(str)
+    file_data = Optional(LongStr)
+    filename = Optional(str)

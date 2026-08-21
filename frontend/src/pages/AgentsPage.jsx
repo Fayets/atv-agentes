@@ -1,6 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
-import { CATEGORIES, CATEGORY_LABELS, getAgentConfig, listAgents, saveAgentConfig } from "@/lib/api";
+import {
+  CATEGORIES,
+  CATEGORY_LABELS,
+  createAgentExample,
+  deleteAgentExample,
+  extractExampleDocument,
+  getAgentConfig,
+  getAgentExamples,
+  listAgents,
+  saveAgentConfig,
+} from "@/lib/api";
+import { DOCUMENT_ACCEPT, documentError } from "@/lib/read-document";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +25,15 @@ export default function AgentsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [examples, setExamples] = useState([]);
+  const [newExampleTitle, setNewExampleTitle] = useState("");
+  const [newExampleContent, setNewExampleContent] = useState("");
+  const [addingExample, setAddingExample] = useState(false);
+  const [showAddExample, setShowAddExample] = useState(false);
+  const [extractingExample, setExtractingExample] = useState(false);
+  const [exampleFileName, setExampleFileName] = useState("");
+  const [exampleFileMeta, setExampleFileMeta] = useState(null);
+  const exampleFileRef = useRef(null);
 
   const selected = agents.find((a) => a.id === selectedId) || null;
   const dirty = prompt !== savedPrompt;
@@ -43,6 +63,11 @@ export default function AgentsPage() {
     if (!selectedId) return;
     setDocLoading(true);
     setError("");
+    setShowAddExample(false);
+    setNewExampleTitle("");
+    setNewExampleContent("");
+    setExampleFileName("");
+    setExampleFileMeta(null);
     getAgentConfig(selectedId)
       .then((data) => {
         const next = data.system_prompt || "";
@@ -51,6 +76,10 @@ export default function AgentsPage() {
       })
       .catch(() => setError("No se pudo cargar el documento de este agente."))
       .finally(() => setDocLoading(false));
+
+    getAgentExamples(selectedId)
+      .then(setExamples)
+      .catch(() => setExamples([]));
   }, [selectedId]);
 
   const handleSelect = (id) => {
@@ -77,6 +106,68 @@ export default function AgentsPage() {
       setError("No se pudo guardar. Revisá que uvicorn esté en el puerto 8000.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAddExample = async () => {
+    if (!selectedId || !newExampleTitle.trim() || !newExampleContent.trim()) return;
+    setAddingExample(true);
+    try {
+      const created = await createAgentExample(
+        selectedId,
+        newExampleTitle,
+        newExampleContent,
+        exampleFileMeta || {}
+      );
+      setExamples((prev) => [...prev, created]);
+      setNewExampleTitle("");
+      setNewExampleContent("");
+      setExampleFileName("");
+      setExampleFileMeta(null);
+      setShowAddExample(false);
+    } catch (e) {
+      setError(e?.message || "No se pudo guardar el ejemplo.");
+    } finally {
+      setAddingExample(false);
+    }
+  };
+
+  const handleExampleFile = async (file) => {
+    const msg = documentError(file);
+    if (msg) {
+      setError(msg);
+      return;
+    }
+    setExtractingExample(true);
+    setError("");
+    try {
+      const data = await extractExampleDocument(file);
+      setExampleFileName(file.name);
+      setNewExampleTitle((prev) => prev.trim() || data.title || "");
+      setNewExampleContent(data.content || "");
+      if (data.file_data) {
+        setExampleFileMeta({
+          media_type: data.media_type,
+          file_data: data.file_data,
+          filename: data.filename || file.name,
+        });
+      } else {
+        setExampleFileMeta(null);
+      }
+    } catch (e) {
+      setError(e?.message || "No se pudo leer el documento. Probá .md, .txt, .docx o .pdf.");
+    } finally {
+      setExtractingExample(false);
+      if (exampleFileRef.current) exampleFileRef.current.value = "";
+    }
+  };
+
+  const handleDeleteExample = async (id) => {
+    try {
+      await deleteAgentExample(id);
+      setExamples((prev) => prev.filter((e) => e.id !== id));
+    } catch {
+      setError("No se pudo eliminar el ejemplo.");
     }
   };
 
@@ -155,6 +246,121 @@ export default function AgentsPage() {
                     className="min-h-[28rem] w-full resize-y rounded-xl border border-white/10 bg-[#111] p-4 font-mono text-sm leading-relaxed text-white/85 outline-none focus:border-primary/50"
                     placeholder="Pegá acá el documento de procesamiento de este agente…"
                   />
+
+                  <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-[#0f0f0f] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-white/40">
+                          Ejemplos de output ({examples.length})
+                        </p>
+                        <p className="mt-1 text-sm text-white/45">
+                          Outputs reales o documentos (.md, .txt, .docx, .pdf). El agente los usa como referencia.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowAddExample((v) => !v)}
+                      >
+                        {showAddExample ? "Cancelar" : "+ Agregar ejemplo"}
+                      </Button>
+                    </div>
+
+                    {examples.length > 0 ? (
+                      <div className="flex flex-col gap-2">
+                        {examples.map((ex) => (
+                          <div
+                            key={ex.id}
+                            className="flex items-start justify-between gap-3 rounded-lg border border-white/10 bg-[#111] px-3 py-2.5"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-white">{ex.title}</p>
+                              <p className="mt-0.5 truncate text-xs text-white/40">
+                                {ex.has_file
+                                  ? `📎 ${ex.filename || "documento.pdf"}`
+                                  : `${(ex.content || "").slice(0, 140)}…`}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="shrink-0 text-white/40 hover:text-red-400"
+                              onClick={() => handleDeleteExample(ex.id)}
+                              aria-label="Eliminar ejemplo"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {showAddExample ? (
+                      <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-[#111] p-3">
+                        <button
+                          type="button"
+                          disabled={extractingExample}
+                          onClick={() => exampleFileRef.current?.click()}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const file = e.dataTransfer.files?.[0];
+                            if (file) handleExampleFile(file);
+                          }}
+                          className="rounded-lg border border-dashed border-white/15 bg-[#0a0a0a] px-3 py-6 text-center transition-colors hover:border-primary/40 hover:bg-primary/5 disabled:opacity-50"
+                        >
+                          <p className="text-sm text-white/70">
+                            {extractingExample
+                              ? "Leyendo documento…"
+                              : "Soltá un documento o hacé click"}
+                          </p>
+                          <p className="mt-1 text-xs text-white/35">.md · .txt · .docx · .pdf · máx 10MB</p>
+                          {exampleFileName ? (
+                            <p className="mt-2 text-xs text-primary">
+                              {exampleFileName}
+                              {exampleFileMeta ? " · se adjuntará el PDF" : ""}
+                            </p>
+                          ) : null}
+                          <input
+                            ref={exampleFileRef}
+                            type="file"
+                            accept={DOCUMENT_ACCEPT}
+                            hidden
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleExampleFile(file);
+                            }}
+                          />
+                        </button>
+                        <input
+                          value={newExampleTitle}
+                          onChange={(e) => setNewExampleTitle(e.target.value)}
+                          placeholder="Título (ej: Presentación cliente Giuliano)"
+                          className="w-full rounded-lg border border-white/10 bg-[#0a0a0a] px-3 py-2 text-sm text-white outline-none focus:border-primary/50"
+                        />
+                        <textarea
+                          value={newExampleContent}
+                          onChange={(e) => setNewExampleContent(e.target.value)}
+                          rows={8}
+                          placeholder="Pegá el output completo o subí un documento arriba…"
+                          className="w-full resize-y rounded-lg border border-white/10 bg-[#0a0a0a] p-3 font-mono text-sm text-white/85 outline-none focus:border-primary/50"
+                        />
+                        <Button
+                          type="button"
+                          onClick={handleAddExample}
+                          disabled={
+                            addingExample ||
+                            extractingExample ||
+                            !newExampleTitle.trim() ||
+                            !newExampleContent.trim()
+                          }
+                        >
+                          {addingExample ? "Guardando…" : "Guardar ejemplo"}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+
                   <div className="pb-8">
                     <Button onClick={handleSave} disabled={saving || !dirty}>
                       {saving ? "Guardando…" : saved ? "Guardado" : "Guardar documento"}

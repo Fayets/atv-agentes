@@ -2,7 +2,93 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
+  display: flex;
   background: #09090b;
+}
+
+.wf-sidebar {
+  width: 272px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0a0a0a;
+  z-index: 50;
+}
+
+.wf-sidebar__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 6px 8px;
+}
+
+.wf-sidebar__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: rgba(255, 255, 255, 0.92);
+  line-height: 1.3;
+}
+
+.wf-sidebar__new {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(225, 29, 46, 0.4);
+  background: rgba(225, 29, 46, 0.12);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wf-sidebar__new:hover {
+  background: rgba(225, 29, 46, 0.2);
+  border-color: rgba(225, 29, 46, 0.6);
+}
+
+.wf-sidebar__label {
+  margin: 8px 6px 0;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.wf-sidebar__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 2px;
+}
+
+.wf-sidebar__empty {
+  margin: 8px 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.3);
+  line-height: 1.4;
+}
+
+.wf-sidebar__foot {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.wf-main {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
 }
 
 .wf-page__head {
@@ -56,37 +142,28 @@
   border-color: rgba(225, 29, 46, 0.65);
 }
 
-.wf-sessions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  width: 100%;
-  max-height: 88px;
-  overflow-y: auto;
-  pointer-events: auto;
-}
-
 .wf-session {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-width: min(280px, 100%);
-  padding: 8px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.75);
+  width: 100%;
+  max-width: none;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
   text-align: left;
   cursor: pointer;
 }
 
 .wf-session:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .wf-session.is-active {
-  border-color: rgba(225, 29, 46, 0.55);
+  border-color: rgba(225, 29, 46, 0.35);
   background: rgba(225, 29, 46, 0.1);
 }
 
@@ -101,7 +178,7 @@
   font-size: 10px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.38);
+  color: rgba(255, 255, 255, 0.35);
 }
 
 .wf-session__del {
@@ -130,6 +207,56 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.wf-session__rename {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 2px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(225, 29, 46, 0.55);
+  background: #111;
+  color: #fff;
+  font-size: 12px;
+  outline: none;
+}
+
+.wf-ctx {
+  position: fixed;
+  z-index: 2000;
+  min-width: 148px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #161618;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+}
+
+.wf-ctx button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.wf-ctx button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.wf-ctx button.is-danger {
+  color: #ff6b76;
+}
+
+.wf-ctx button.is-danger:hover {
+  background: rgba(225, 29, 46, 0.15);
 }
 
 .wf-page__head > * {
@@ -430,13 +557,18 @@
 
 .wf-page__head.is-hidden {
   opacity: 0;
-  pointer-events: none;
+  visibility: hidden;
+  pointer-events: none !important;
+}
+
+.wf-page__head.is-hidden * {
+  pointer-events: none !important;
 }
 
 .wf-output {
   position: absolute;
   inset: 0;
-  z-index: 25;
+  z-index: 40;
   display: flex;
   flex-direction: column;
   background: #09090b;

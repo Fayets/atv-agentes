@@ -19,6 +19,7 @@ export function AgentChat({
   emptyDescription = "Pegá el brief y el agente responde acá.",
   suggestions = [],
   layout = "chat",
+  afterMessages = null,
   className,
 }) {
   const isDocument = layout === "document";
@@ -156,6 +157,8 @@ export function AgentChat({
                 <span className="size-1.5 animate-bounce rounded-full bg-white/40" />
                 <span className="ml-1">Escribiendo…</span>
               </div>
+            ) : afterMessages ? (
+              <div className="pt-2">{afterMessages}</div>
             ) : null}
           </div>
         ) : (

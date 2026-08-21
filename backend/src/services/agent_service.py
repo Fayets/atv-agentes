@@ -10,7 +10,7 @@ from decouple import config
 from fastapi import HTTPException
 from pony.orm import db_session, flush
 
-from src.models import Agent, AgentMessage, AgentSession, AppSetting, Client, ToneDocument
+from src.models import Agent, AgentExample, AgentMessage, AgentSession, AppSetting, Client, ToneDocument
 from src.schemas import (
     AgentChatResponse,
     AgentFile,
@@ -36,7 +36,7 @@ AGENT_META = {
     "vt2": {"name": "Proceso de Preaudit (trigger)", "category": "ventas"},
     "vt3": {"name": "Proceso de Venta (call)", "category": "ventas"},
     "vt4": {"name": "VSL Chat", "category": "ventas"},
-    "vt5": {"name": "Presentación de Resultados", "category": "ventas"},
+    "vt5": {"name": "Presentación de Venta", "category": "ventas"},
     "vt6": {"name": "Landing (Thank You)", "category": "ventas"},
     "es1": {"name": "Estrategia de Ads", "category": "escala"},
     "es2": {"name": "Estructura y Presentación de Webinar", "category": "escala"},
@@ -44,19 +44,275 @@ AGENT_META = {
 
 AGENT_SYSTEM_PROMPTS = {agent_id: "" for agent_id in AGENT_META}
 
-MODEL = "claude-haiku-4-5"
+MODEL = "claude-sonnet-4-6"
+# vt5 diseña decks: tarea de criterio visual → Opus con thinking adaptativo
+MODEL_BY_AGENT = {
+    "vt5": "claude-opus-5",
+}
 MAX_TOKENS = 4000
 _MAX_DOC_CHARS = 8000
-_MAX_SKILL_CHARS = 1800
+# Tope de adjuntos base64 por request (la API corta en 32MB de request total).
+_MAX_ATTACH_B64_TOTAL = 20_000_000
+# Un PDF más pesado que esto no se adjunta como imagen: solo su texto.
+_MAX_ATTACH_RAW_BYTES = 15_000_000
+# Un deck 1920x1080 de 10-16 slides con CSS inline son 12k-20k tokens.
+# max_tokens acota thinking + texto, así que vt5 necesita techo alto + streaming.
 _LONG_OUTPUT_TOKENS = {
     "mk1": 5000,
+    "vt5": 64000,
+}
+# Por encima de este techo el SDK exige streaming (si no, timeout HTTP).
+_STREAM_THRESHOLD = 16000
+# Agentes que razonan antes de responder (diseño, arquitectura de deck).
+_THINKING_AGENTS = {"vt5"}
+# Profundidad del razonamiento. Editable por env para poder A/B testear sin
+# tocar código: low | medium | high | xhigh | max. Es el lever principal sobre
+# el costo de output, que es ~2/3 del costo total de un deck.
+_EFFORT_BY_AGENT = {
+    "vt5": config("VT5_EFFORT", default="high"),
+}
+# TTL del caché de prompt: "5m" | "1h" | "off".
+#
+# El prefijo de vt5 (system + PDFs) son ~73k tokens idénticos en cada corrida,
+# pero escribir el caché NO es gratis: cuesta 1.25x con 5m y 2x con 1h, contra
+# 0.1x por lectura. El punto de equilibrio depende de cuántos decks generes
+# dentro de la ventana:
+#   off  -> 1 deck aislado cada tanto (lo más barato si nunca hay 2 seguidos)
+#   5m   -> default seguro: penalidad chica y cubre reintentos inmediatos
+#   1h   -> conviene a partir de ~3 decks por hora (tandas de clientes)
+_CACHE_TTL_BY_AGENT = {
+    "vt5": config("VT5_CACHE_TTL", default="5m"),
+}
+# USD por millón de tokens (input, output).
+_PRICES = {
+    "claude-opus-5": (5.0, 25.0),
+    "claude-sonnet-5": (3.0, 15.0),
+    "claude-sonnet-4-6": (3.0, 15.0),
+    "claude-haiku-4-5": (1.0, 5.0),
+}
+_CACHE_WRITE_MULT = {"5m": 1.25, "1h": 2.0}
+_CACHE_READ_MULT = 0.1
+
+
+def _cache_control(agent_id: str) -> dict | None:
+    ttl = (_CACHE_TTL_BY_AGENT.get(agent_id) or "5m").strip().lower()
+    if ttl in ("off", "none", "no", "0"):
+        return None
+    return {"type": "ephemeral", "ttl": ttl} if ttl == "1h" else {"type": "ephemeral"}
+
+
+def _log_usage(agent_id: str, model: str, usage) -> None:
+    """Deja el costo de cada corrida en el log. Sin esto se optimiza a ciegas."""
+    inp = getattr(usage, "input_tokens", 0) or 0
+    out = getattr(usage, "output_tokens", 0) or 0
+    write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    read = getattr(usage, "cache_read_input_tokens", 0) or 0
+    p_in, p_out = _PRICES.get(model, (0.0, 0.0))
+    mult = _CACHE_WRITE_MULT.get(_CACHE_TTL_BY_AGENT.get(agent_id) or "5m", 1.25)
+    cost = (
+        inp * p_in
+        + write * p_in * mult
+        + read * p_in * _CACHE_READ_MULT
+        + out * p_out
+    ) / 1_000_000
+    ahorro = read * p_in * (1 - _CACHE_READ_MULT) / 1_000_000
+    print(
+        f"[{agent_id}/{model}] in={inp:,} cache_write={write:,} cache_read={read:,} "
+        f"out={out:,} | USD {cost:.4f}"
+        + (f" (caché ahorró {ahorro:.4f})" if read else " (SIN cache hit)")
+    )
+
+
+# Fragmento único de cada prompt canónico del repo (src/prompts/*.md). Sirve
+# para adoptarlo una sola vez por encima de lo que haya quedado en la DB.
+_CANONICAL_MARKERS = {
+    "vt5": "director de arte y estratega de cierre de ATV",
+    "bs1": "Sos el agente Oferta y Escalera de Valor de Grounded",
 }
 
-_VOICE_LOCK = """
-El prompt del agente define QUÉ entregar y el formato. Respetalo 1:1.
-El documento de tono define CÓMO suenan copies, hooks, outlines e ideas al avatar (voseo, directo, números). No copies el índice del tono.
-Si el prompt pide un entregable estructurado (calendario, bloques, campos), no lo conviertas en una charla.
+# Contrato técnico con el visor (frontend/src/lib/presentation-html.js).
+# La dirección de arte y la estructura narrativa viven en prompts/vt5.md.
+_VT5_HTML_FORMAT = """
+CONTRATO DE RENDER — el visor ATV monta tu HTML en un escenario fijo de 1920×1080
+y lo escala al viewport. Respetá esto al pie de la letra o el deck se rompe:
+
+- Cada slide es un `<section class="slide">`. Nada de wrappers extra entre el body
+  y los slides.
+- El `<section class="slide">` ES el lienzo de 1920×1080. Poné vos el padding
+  (72–96px) sobre el propio `.slide`. No declares `width`/`height` en `.slide`:
+  el visor los fija.
+- Podés usar `position: absolute` dentro del slide (logo, folio, línea de acento):
+  el `.slide` es el bloque contenedor, así que `top/right/bottom/left` se anclan
+  al lienzo de 1920×1080.
+- PROHIBIDO usar unidades de viewport (`vh`, `vw`, `vmin`, `vmax`) en cualquier
+  parte del CSS. El viewport real del iframe no mide 1920×1080 y todo se descuadra.
+  Usá px, %, fr, rem.
+- Cada slide tiene que ENTRAR en 1080px de alto. Lo que se pase se recorta.
+- No escribas JS de navegación, ni `display:none` sobre los slides, ni flechas
+  propias: el visor pone navegación, contador y teclado.
+- Todo el CSS va en un único `<style>` en el `<head>`. Tipografías por
+  `<link>` a Google Fonts. Sin CDNs de JS, sin imágenes remotas.
+
+ENTREGABLE:
+1) 2–4 líneas de resumen de las decisiones de diseño.
+2) Un único bloque ```html ... ``` con el documento completo, de `<!DOCTYPE html>`
+   a `</html>`. Si el usuario pide un cambio, devolvés el documento COMPLETO otra
+   vez (no un fragmento ni un diff).
 """.strip()
+
+
+def _model_for(agent_id: str) -> str:
+    return MODEL_BY_AGENT.get(agent_id, MODEL)
+
+
+def _build_system_prompt(agent_id: str, cache: bool = False):
+    agent_prompt = get_agent_system_prompt(agent_id)
+    tone = get_tone_doc()
+    examples = get_agent_examples(agent_id)
+
+    examples_block = ""
+    text_examples = [ex for ex in examples if not ex.get("has_file")]
+    if agent_id == "vt5":
+        # La referencia de vt5 es VISUAL. El texto extraído de un PDF de diseño
+        # llega sin layout y con el orden de lectura roto: como "ejemplo de
+        # calidad" empeora el output en vez de mejorarlo.
+        text_examples = []
+    if text_examples:
+        examples_block = (
+            "\n\n---\n\nEJEMPLOS DE OUTPUTS REALES\n\n"
+            "Los siguientes son ejemplos de outputs generados anteriormente. "
+            "Usálos como referencia de calidad, nivel de detalle y tono. "
+            "Nunca copies el contenido — solo el estilo y la estructura.\n\n"
+        )
+        for i, ex in enumerate(text_examples, 1):
+            examples_block += f"EJEMPLO {i} — {ex['title']}:\n{ex['content']}\n\n"
+
+    file_examples = [ex for ex in examples if ex.get("has_file")]
+    if file_examples:
+        names = ", ".join(ex["title"] for ex in file_examples)
+        if agent_id == "vt5":
+            examples_block += (
+                "\n\n---\n\nREFERENCIA VISUAL OBLIGATORIA\n\n"
+                f"En el primer mensaje vienen adjuntos los decks reales de ATV ({names}). "
+                "Son el estándar de calidad que tenés que igualar: miralos y sacá de ahí "
+                "la escala tipográfica, los pesos, el tracking, los márgenes, la densidad "
+                "de texto por slide, el uso del color de acento y el ritmo entre slides. "
+                "Antes de escribir HTML, decidí explícitamente qué sistema visual estás "
+                "reproduciendo. Nunca copies el contenido textual: solo el sistema de diseño.\n"
+            )
+        else:
+            examples_block += (
+                "\n\n---\n\nTambién hay ejemplos en PDF adjuntos en el mensaje "
+                f"({names}). Tomalos como referencia visual de calidad y estructura, "
+                "sin copiar el contenido.\n"
+            )
+    elif agent_id == "vt5":
+        examples_block += (
+            "\n\n---\n\nNo hay decks de referencia adjuntos en esta corrida. "
+            "Diseñá igual al máximo nivel siguiendo el sistema visual descrito arriba, "
+            "y evitá cualquier default genérico de IA.\n"
+        )
+
+    format_lock = f"\n\n---\n\n{_VT5_HTML_FORMAT}" if agent_id == "vt5" else ""
+
+    text = (
+        f"{agent_prompt}{examples_block}{format_lock}\n\n---\n\n{tone}\n\n"
+        "Todo el output que generes debe respetar este tono de voz sin excepción."
+    )
+    block = {"type": "text", "text": text}
+    cc = _cache_control(agent_id) if cache else None
+    if cc:
+        block["cache_control"] = cc
+    return [block]
+
+
+def _example_file_messages(
+    agent_id: str,
+    *,
+    enabled: bool = True,
+    limit: int | None = None,
+    cache: bool = False,
+) -> list[dict]:
+    """PDF examples. Costoso: solo en el primer run (no en cada chat follow-up)."""
+    if not enabled:
+        return []
+    examples = [ex for ex in get_agent_examples(agent_id, include_file_data=True) if ex.get("file_data")]
+    if limit is not None:
+        examples = examples[: max(0, limit)]
+
+    # El request completo no puede superar 32MB. Recortamos por payload, no por
+    # cantidad, para no romper con un PDF pesado.
+    budget = _MAX_ATTACH_B64_TOTAL
+    kept = []
+    for ex in examples:
+        size = len(ex["file_data"])
+        if size > budget:
+            print(
+                f"_example_file_messages: '{ex['title']}' omitido "
+                f"({size // 1_000_000}MB base64, presupuesto restante "
+                f"{budget // 1_000_000}MB)"
+            )
+            continue
+        budget -= size
+        kept.append(ex)
+    examples = kept
+
+    messages = []
+    for ex in examples:
+        design_hint = (
+            "Este PDF es un EJEMPLO VISUAL de presentación real del estándar ATV. "
+            "Estudiá tipografía, jerarquía, spacing, contraste y composición. "
+            "El output debe verse del MISMO nivel (en HTML), sin copiar el contenido."
+            if agent_id == "vt5"
+            else (
+                f"EJEMPLO DE OUTPUT — {ex['title']}. "
+                "Referencia de calidad y estructura. No copies el contenido."
+            )
+        )
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": ex.get("media_type") or "application/pdf",
+                            "data": ex["file_data"],
+                        },
+                    },
+                    {"type": "text", "text": f"EJEMPLO — {ex['title']}. {design_hint}"},
+                ],
+            }
+        )
+        messages.append(
+            {
+                "role": "assistant",
+                "content": (
+                    "Perfecto. Voy a tomar ese ejemplo como referencia visual de tipografía, "
+                    "layout y calidad, sin copiar el contenido."
+                    if agent_id == "vt5"
+                    else (
+                        "Entendido. Voy a usar ese ejemplo como referencia de calidad "
+                        "sin copiar el contenido."
+                    )
+                ),
+            }
+        )
+
+    # Breakpoint de caché al final de los adjuntos: system + PDFs se sirven
+    # cacheados en las corridas siguientes (los PDFs son el 90% del input).
+    if cache and messages:
+        last_user = next(
+            (m for m in reversed(messages) if m["role"] == "user"),
+            None,
+        )
+        cc = _cache_control(agent_id)
+        if cc and last_user and isinstance(last_user["content"], list):
+            last_user["content"][-1]["cache_control"] = cc
+
+    return messages
+
 
 _anthropic = None
 
@@ -177,74 +433,144 @@ def get_agent_system_prompt(agent_id: str) -> str:
         if default and "SOP —" in default and "SOP —" not in stored:
             row.system_prompt = default
             return default
+        # Adopción única del prompt canónico del repo. Hasta ahora estos agentes
+        # vivían con lo pegado desde la UI — en el caso de bs1, con el documento
+        # de investigación previo en vez de un prompt. Una vez adoptado, el
+        # marcador queda en el stored y las ediciones desde la UI se respetan.
+        marker = _CANONICAL_MARKERS.get(agent_id)
+        if marker and marker in (default or "") and marker not in stored:
+            row.system_prompt = default
+            return default
         return stored.strip() and stored or default
 
 
-def _tone_block() -> str:
-    tone = get_tone_doc().strip()
-    if not tone or "[contenido" in tone:
-        return ""
-    return (
-        "DOCUMENTO DE TONO DE VOZ DE JUAN CRUZ. Obligatorio. "
-        "Escribí como los ejemplos de la sección 8 y el system de la sección 9. "
-        "No copies el índice del documento.\n\n"
-        f"{tone}"
-    )
+_MAX_EXAMPLE_CHARS = 40000
+_EXAMPLE_PDF_PAGES = 40
+_MIN_PDF_TEXT = 80
 
 
-def _build_system_prompt(agent_id: str, cache: bool = False):
-    skill = _compact_skill(get_agent_system_prompt(agent_id))
-    parts = [
-        "PROMPT DEL AGENTE (qué entregar y en qué formato):\n" + skill if skill else "",
-        _tone_block(),
-        _VOICE_LOCK,
-    ]
-    text = "\n\n---\n\n".join(p for p in parts if p)
-    block = {"type": "text", "text": text}
-    if cache:
-        block["cache_control"] = {"type": "ephemeral"}
-    return [block]
-
-
-def _compact_skill(skill: str) -> str:
-    skill = (skill or "").strip()
-    if "SOP" in skill[:80] or "Calendario de Contenido" in skill[:200]:
-        return skill
-    for cut in ("\nEjemplos de razonamiento", "\n5 — Pricing", "\n### 1"):
-        if cut in skill:
-            head = skill[: skill.index(cut)]
-            rest = ""
-            if "\nCómo pensás" in skill:
-                rest = skill[skill.index("\nCómo pensás") :]
-            skill = (head + rest).strip()
-            break
-    skill = (skill or "").strip()
-    if len(skill) <= _MAX_SKILL_CHARS:
-        return skill
-    return skill[:_MAX_SKILL_CHARS].rsplit("\n", 1)[0].strip()
-
-
-def _pdf_to_text(data_b64: str) -> str:
+def _pdf_bytes_to_text(
+    raw: bytes, *, max_pages: int = 8, max_chars: int = _MAX_DOC_CHARS
+) -> str:
     try:
         from pypdf import PdfReader
     except ImportError:
         return ""
     try:
-        raw = base64.b64decode(data_b64)
         reader = PdfReader(io.BytesIO(raw))
         parts = []
         for i, page in enumerate(reader.pages):
-            if i >= 8:
+            if i >= max_pages:
                 break
-            extracted = (page.extract_text() or "").strip()
+            extracted = ""
+            try:
+                extracted = (page.extract_text() or "").strip()
+            except Exception:
+                extracted = ""
+            if not extracted:
+                try:
+                    extracted = (page.extract_text(extraction_mode="layout") or "").strip()
+                except Exception:
+                    extracted = ""
             if extracted:
                 parts.append(extracted)
         text = "\n\n".join(parts).strip()
-        if len(text) > _MAX_DOC_CHARS:
-            text = text[:_MAX_DOC_CHARS] + "\n[documento recortado]"
+        if len(text) > max_chars:
+            text = text[:max_chars] + "\n[documento recortado]"
         return text
     except Exception:
         return ""
+
+
+def _pdf_to_text(data_b64: str) -> str:
+    try:
+        raw = base64.b64decode(data_b64)
+    except Exception:
+        return ""
+    return _pdf_bytes_to_text(raw)
+
+
+def _docx_bytes_to_text(raw: bytes) -> str:
+    try:
+        import zipfile
+        from xml.etree import ElementTree as ET
+
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            xml = zf.read("word/document.xml")
+        root = ET.fromstring(xml)
+        paras = []
+        for p in root.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"):
+            texts = [
+                (t.text or "")
+                for t in p.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t")
+            ]
+            line = "".join(texts).strip()
+            if line:
+                paras.append(line)
+        text = "\n".join(paras).strip()
+        if len(text) > _MAX_EXAMPLE_CHARS:
+            text = text[:_MAX_EXAMPLE_CHARS] + "\n[documento recortado]"
+        return text
+    except Exception:
+        return ""
+
+
+def extract_example_document(filename: str, raw: bytes) -> dict:
+    if not raw:
+        raise HTTPException(status_code=400, detail="El archivo está vacío")
+
+    name = (filename or "ejemplo").strip() or "ejemplo"
+    lower = name.lower()
+    title = Path(name).stem.strip() or "ejemplo"
+    is_pdf = lower.endswith(".pdf") or raw[:4] == b"%PDF"
+    is_docx = lower.endswith(".docx")
+    is_text = lower.endswith((".md", ".txt", ".csv", ".json"))
+
+    content = ""
+    media_type = None
+    file_data = None
+
+    if is_text:
+        content = raw.decode("utf-8", errors="replace").strip()
+    elif is_docx:
+        content = _docx_bytes_to_text(raw)
+    elif is_pdf:
+        content = _pdf_bytes_to_text(
+            raw, max_pages=_EXAMPLE_PDF_PAGES, max_chars=_MAX_EXAMPLE_CHARS
+        )
+        # Un PDF de ejemplo SIEMPRE se guarda como adjunto, tenga o no capa de
+        # texto: los decks exportados de Canva/Figma/Keynote sí tienen texto, y
+        # si nos quedamos con el texto el modelo nunca ve el diseño.
+        if len(raw) <= _MAX_ATTACH_RAW_BYTES:
+            media_type = "application/pdf"
+            file_data = base64.b64encode(raw).decode("ascii")
+        else:
+            print(
+                f"extract_example_document: '{name}' pesa "
+                f"{len(raw) // 1_000_000}MB — se guarda solo el texto"
+            )
+        if not content:
+            content = f"[PDF adjunto: {name}]"
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato no soportado. Usá .md, .txt, .docx o .pdf",
+        )
+
+    if not content and not file_data:
+        raise HTTPException(
+            status_code=400,
+            detail="No se pudo leer el documento. Probá exportarlo a .txt/.md o pegá el texto.",
+        )
+    if len(content) > _MAX_EXAMPLE_CHARS:
+        content = content[:_MAX_EXAMPLE_CHARS] + "\n[documento recortado]"
+
+    result = {"title": title, "content": content}
+    if media_type and file_data:
+        result["media_type"] = media_type
+        result["file_data"] = file_data
+        result["filename"] = name
+    return result
 
 
 def list_agents() -> list[dict]:
@@ -297,7 +623,7 @@ def _user_message(text: str, files: list[AgentFile] | None = None) -> dict:
     for item in files:
         if item.media_type == "application/pdf" and item.data:
             pdf_text = _pdf_to_text(item.data)
-            if len(pdf_text) >= 80:
+            if len(pdf_text) >= _MIN_PDF_TEXT:
                 extracted.append(f"--- {item.name} ---\n{pdf_text}")
             else:
                 blocks.append(
@@ -325,19 +651,44 @@ def _user_message(text: str, files: list[AgentFile] | None = None) -> dict:
 
 
 def _complete(system: str, messages: list[dict], agent_id: str = "") -> str:
-    response = _client().messages.create(
-        model=MODEL,
-        max_tokens=_LONG_OUTPUT_TOKENS.get(agent_id, MAX_TOKENS),
-        system=system,
-        messages=messages,
-    )
-    parts = []
-    for block in response.content:
-        text = getattr(block, "text", None)
-        if text:
-            parts.append(text)
+    max_tokens = _LONG_OUTPUT_TOKENS.get(agent_id, MAX_TOKENS)
+    params = {
+        "model": _model_for(agent_id),
+        "max_tokens": max_tokens,
+        "system": system,
+        "messages": messages,
+    }
+    if agent_id in _THINKING_AGENTS:
+        # Diseñar un deck es una tarea de criterio: que piense antes de escribir.
+        params["thinking"] = {"type": "adaptive"}
+        params["output_config"] = {"effort": _EFFORT_BY_AGENT.get(agent_id, "high")}
+
+    client = _client()
+    if max_tokens > _STREAM_THRESHOLD:
+        # Sin streaming el SDK corta por timeout HTTP en outputs largos.
+        with client.messages.stream(**params) as stream:
+            response = stream.get_final_message()
+    else:
+        response = client.messages.create(**params)
+
+    _log_usage(agent_id, params["model"], response.usage)
+
+    if response.stop_reason == "refusal":
+        raise HTTPException(
+            status_code=422,
+            detail="Claude rechazó la generación. Reformulá el input y volvé a intentar.",
+        )
+
+    parts = [block.text for block in response.content if block.type == "text"]
     raw = "".join(parts)
-    if agent_id == "mk1":
+
+    if response.stop_reason == "max_tokens":
+        print(
+            f"_complete[{agent_id}]: output truncado en {max_tokens} tokens "
+            f"({len(raw)} chars). Subir _LONG_OUTPUT_TOKENS."
+        )
+
+    if agent_id in ("mk1", "vt5"):
         return raw.strip()
     return _plain_voice(raw)
 
@@ -347,13 +698,34 @@ def _session_messages(session) -> list[dict]:
     return [{"role": msg.role, "content": str(msg.content or "")} for msg in rows]
 
 
+_MAX_ARTIFACT_CHARS = 160_000
+
+
+def _last_artifact_index(messages: list[dict]) -> int:
+    """Índice del último assistant que entregó un documento HTML completo."""
+    for i in range(len(messages) - 1, -1, -1):
+        item = messages[i]
+        if item.get("role") != "assistant":
+            continue
+        content = item.get("content") or ""
+        if isinstance(content, str) and ("```html" in content or "<html" in content.lower()):
+            return i
+    return -1
+
+
 def _trim_history(messages: list[dict]) -> list[dict]:
     keep = messages[-6:]
+    # El entregable anterior se preserva entero: si lo recortamos, un "cambiá el
+    # slide 3" obliga al modelo a regenerar de cero y el deck deriva.
+    artifact = _last_artifact_index(keep)
     out = []
     for i, item in enumerate(keep):
         content = item.get("content") or ""
         last = i == len(keep) - 1
-        cap = 4000 if last else 1500
+        if i == artifact:
+            cap = _MAX_ARTIFACT_CHARS
+        else:
+            cap = 4000 if last else 1500
         if isinstance(content, str) and len(content) > cap:
             content = content[:cap] + "…"
         out.append({**item, "content": content})
@@ -367,8 +739,12 @@ def run_agent(
     files: list[AgentFile] | None = None,
 ) -> AgentRunResponse:
     files = files or []
-    system = _build_system_prompt(agent_id, cache=False)
-    output = _complete(system, [_user_message(input_doc, files)], agent_id)
+    system = _build_system_prompt(agent_id, cache=True)
+    messages = [
+        *_example_file_messages(agent_id, enabled=True, cache=True),
+        _user_message(input_doc, files),
+    ]
+    output = _complete(system, messages, agent_id)
     now = datetime.utcnow()
     stored = _store_user_text(input_doc, files) or input_doc
 
@@ -404,6 +780,17 @@ def chat_agent(
         history = _session_messages(session)
 
     api_messages = _trim_history([m for m in history if m["role"] in ("user", "assistant")])
+    # Breakpoint al final del historial: el deck anterior son ~16k tokens que
+    # viajan en cada follow-up. Cacheado, el segundo "cambiá el slide X" los lee
+    # a 0.1x en vez de repagarlos enteros.
+    cc_hist = _cache_control(agent_id)
+    if cc_hist and api_messages:
+        tail = api_messages[-1]
+        if isinstance(tail.get("content"), str) and tail["content"].strip():
+            tail["content"] = [
+                {"type": "text", "text": tail["content"], "cache_control": cc_hist}
+            ]
+    # No reinyectar PDFs en follow-ups: multiplica el costo sin ganar calidad
     api_messages.append(_user_message(message, files))
     system = _build_system_prompt(agent_id, cache=True)
     reply = _complete(system, api_messages, agent_id)
@@ -445,6 +832,7 @@ def _sessions_for_client_agent(client_id: str, agent_id: str) -> list:
                 "id": session.id,
                 "created_at": session.created_at.isoformat(),
                 "updated_at": session.updated_at.isoformat(),
+                "title": str(session.title or "").strip(),
                 "messages": _session_messages(session),
             }
             for session in sessions
@@ -464,10 +852,24 @@ def list_client_sessions(client_id: str, agent_id: str) -> AgentSessionListRespo
                 "created_at": session["created_at"],
                 "updated_at": session["updated_at"],
                 "preview": preview,
+                "title": session.get("title") or "",
                 "message_count": len(messages),
             }
         )
     return AgentSessionListResponse(sessions=items)
+
+
+def rename_session(session_id: int, title: str) -> dict:
+    clean = (title or "").strip()[:120]
+    if not clean:
+        raise HTTPException(status_code=400, detail="El nombre no puede estar vacío")
+    with db_session:
+        session = AgentSession.get(id=session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        session.title = clean
+        session.updated_at = datetime.utcnow()
+    return {"ok": True, "session_id": session_id, "title": clean}
 
 
 def delete_session(session_id: int) -> dict:
@@ -515,4 +917,75 @@ def save_tone_doc(tone_doc: str) -> dict:
         else:
             row.content = content
             row.updated_at = now
+    return {"ok": True}
+
+
+def get_agent_examples(agent_id: str, include_file_data: bool = False) -> list[dict]:
+    # Filtrar en Python: el lambda de Pony choca si la variable se llama agent_id
+    with db_session:
+        rows = [e for e in list(AgentExample.select()) if e.agent_id == agent_id]
+        rows = sorted(rows, key=lambda e: (e.created_at, e.id))
+        out = []
+        for e in rows:
+            media_type = (e.media_type or "").strip() or None
+            filename = (e.filename or "").strip() or None
+            has_file = bool(media_type and filename)
+            item = {
+                "id": e.id,
+                "agent_id": e.agent_id,
+                "title": e.title,
+                "content": str(e.content or ""),
+                "created_at": e.created_at,
+                "media_type": media_type,
+                "filename": filename,
+                "has_file": has_file,
+            }
+            if include_file_data and has_file:
+                file_data = str(e.file_data or "")
+                if file_data:
+                    item["file_data"] = file_data
+                else:
+                    item["has_file"] = False
+            out.append(item)
+        return out
+
+
+def create_agent_example(
+    agent_id: str,
+    title: str,
+    content: str,
+    media_type: str | None = None,
+    file_data: str | None = None,
+    filename: str | None = None,
+) -> dict:
+    with db_session:
+        example = AgentExample(
+            agent_id=agent_id,
+            title=title,
+            content=content,
+            created_at=datetime.utcnow(),
+            media_type=media_type or "",
+            file_data=file_data or "",
+            filename=filename or "",
+        )
+        flush()
+        stored = str(example.file_data or "")
+        return {
+            "id": example.id,
+            "agent_id": example.agent_id,
+            "title": example.title,
+            "content": str(example.content or ""),
+            "created_at": example.created_at,
+            "media_type": example.media_type or None,
+            "filename": example.filename or None,
+            "has_file": bool(stored),
+        }
+
+
+def delete_agent_example(example_id: int):
+    with db_session:
+        example = AgentExample.get(id=example_id)
+        if not example:
+            raise HTTPException(status_code=404, detail="Example not found")
+        example.delete()
     return {"ok": True}

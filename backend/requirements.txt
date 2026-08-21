@@ -3,7 +3,7 @@ uvicorn[standard]
 pony
 psycopg2-binary
 python-decouple
-anthropic
+anthropic>=1.0.0
 pypdf
 python-jose[cryptography]
 passlib[bcrypt]
