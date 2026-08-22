@@ -329,8 +329,39 @@ export function apiClientId(clientId) {
   return clientId === "c1" ? "test" : clientId || "test";
 }
 
-export async function runAgent(clientId, agentId, inputDoc, files = []) {
-  return realFetch("/api/agents/run", {
+/**
+ * Una generación tarda de 10s a varios minutos. El backend arranca el trabajo
+ * y devuelve un id; acá lo seguimos hasta que termina. Las funciones devuelven
+ * la misma forma de antes, así que los componentes no se enteran del cambio.
+ */
+const JOB_POLL_MS = 2000;
+const JOB_MAX_MS = 12 * 60 * 1000;
+
+async function waitForJob(jobId, { signal } = {}) {
+  const desde = Date.now();
+  let espera = JOB_POLL_MS;
+  for (;;) {
+    if (signal?.aborted) throw new Error("Cancelado.");
+    if (Date.now() - desde > JOB_MAX_MS) {
+      throw new Error("La generación tardó más de 12 minutos. Revisá el backend.");
+    }
+    await new Promise((r) => setTimeout(r, espera));
+    let job;
+    try {
+      job = await realFetch(`/api/agents/jobs/${jobId}`);
+    } catch (e) {
+      // un corte de red no debería matar un trabajo que sigue corriendo
+      espera = Math.min(espera * 2, 15000);
+      continue;
+    }
+    espera = JOB_POLL_MS;
+    if (job.status === "done") return job;
+    if (job.status === "error") throw new Error(job.error || "La generación falló.");
+  }
+}
+
+export async function runAgent(clientId, agentId, inputDoc, files = [], opts = {}) {
+  const { job_id: jobId } = await realFetch("/api/agents/run", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -340,14 +371,18 @@ export async function runAgent(clientId, agentId, inputDoc, files = []) {
       files,
     }),
   });
+  const job = await waitForJob(jobId, opts);
+  return { session_id: job.session_id, output: job.output };
 }
 
-export async function chatAgent(sessionId, message, files = []) {
-  return realFetch("/api/agents/chat", {
+export async function chatAgent(sessionId, message, files = [], opts = {}) {
+  const { job_id: jobId } = await realFetch("/api/agents/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_id: sessionId, message: message || "", files }),
   });
+  const job = await waitForJob(jobId, opts);
+  return { session_id: job.session_id, reply: job.output };
 }
 
 export async function getAgentHistory(sessionId) {

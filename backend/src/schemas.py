@@ -21,6 +21,21 @@ class AgentRunResponse(BaseModel):
     output: str
 
 
+class AgentJobRef(BaseModel):
+    """Lo que devuelve /run y /chat: el trabajo arrancó, preguntá por él."""
+
+    job_id: str
+    status: str = "running"
+
+
+class AgentJobStatus(BaseModel):
+    job_id: str
+    status: str
+    session_id: int | None = None
+    output: str = ""
+    error: str = ""
+
+
 class AgentChatRequest(BaseModel):
     session_id: int
     message: str = ""

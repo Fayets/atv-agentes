@@ -5,9 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { ShineBorder } from "@/components/magicui/shine-border";
 import { cn } from "@/lib/utils";
-
-const ACCEPT = [".md", ".txt", ".pdf"];
-const MAX_BYTES = 10 * 1024 * 1024;
+import { DOCUMENT_ACCEPT, documentError } from "@/lib/read-document";
 
 export default function UploadDrawer({
   open,
@@ -42,13 +40,9 @@ export default function UploadDrawer({
 
   if (!open) return null;
 
+  // Una sola fuente de verdad para qué se acepta: lib/read-document.
   function validate(f) {
-    if (!f) return "Seleccioná un archivo.";
-    const lower = f.name.toLowerCase();
-    const ok = ACCEPT.some((ext) => lower.endsWith(ext));
-    if (!ok) return "Solo .md, .txt o .pdf.";
-    if (f.size > MAX_BYTES) return "Máximo 10MB.";
-    return "";
+    return documentError(f);
   }
 
   function takeFile(f) {
@@ -126,12 +120,12 @@ export default function UploadDrawer({
             onClick={() => inputRef.current?.click()}
           >
             <p className="text-sm">Soltá el archivo o hacé click</p>
-            <p className="mt-1 text-xs text-muted-foreground">.md · .txt · .pdf · máx 10MB</p>
+            <p className="mt-1 text-xs text-muted-foreground">.md · .txt · .docx · .pdf · imágenes · máx 10MB</p>
             {file ? <p className="mt-3 text-sm text-primary">{file.name}</p> : null}
             <input
               ref={inputRef}
               type="file"
-              accept=".md,.txt,.pdf"
+              accept={DOCUMENT_ACCEPT}
               hidden
               onChange={(e) => takeFile(e.target.files?.[0])}
             />

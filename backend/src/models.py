@@ -60,6 +60,21 @@ class AgentMessage(db.Entity):
     created_at = Required(datetime)
 
 
+class AgentJob(db.Entity):
+    """Una generación en curso. Existe para que /run devuelva al instante y el
+    navegador consulte el resultado, en vez de sostener un HTTP de minutos."""
+
+    id = PrimaryKey(str)
+    kind = Required(str)              # "run" | "chat"
+    status = Required(str)            # "running" | "done" | "error"
+    agent_id = Optional(str)
+    session_id = Optional(int)        # 0 = todavía no hay sesión
+    output = Optional(LongStr)
+    error = Optional(str)
+    created_at = Required(datetime)
+    updated_at = Required(datetime)
+
+
 class AgentExample(db.Entity):
     id = PrimaryKey(int, auto=True)
     agent_id = Required(str)

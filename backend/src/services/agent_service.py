@@ -2,6 +2,8 @@ import base64
 import io
 import os
 import re
+import traceback
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -10,7 +12,16 @@ from decouple import config
 from fastapi import HTTPException
 from pony.orm import db_session, flush
 
-from src.models import Agent, AgentExample, AgentMessage, AgentSession, AppSetting, Client, ToneDocument
+from src.models import (
+    Agent,
+    AgentExample,
+    AgentJob,
+    AgentMessage,
+    AgentSession,
+    AppSetting,
+    Client,
+    ToneDocument,
+)
 from src.schemas import (
     AgentChatResponse,
     AgentFile,
@@ -55,6 +66,13 @@ _MAX_DOC_CHARS = 8000
 _MAX_ATTACH_B64_TOTAL = 20_000_000
 # Un PDF más pesado que esto no se adjunta como imagen: solo su texto.
 _MAX_ATTACH_RAW_BYTES = 15_000_000
+# Formatos de imagen que acepta la API de Claude.
+_IMAGE_TYPES = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".gif": "image/gif", ".webp": "image/webp",
+}
+# La API rechaza imágenes de más de 5MB en base64.
+_MAX_IMAGE_BYTES = 5_000_000
 # Un deck 1920x1080 de 10-16 slides con CSS inline son 12k-20k tokens.
 # max_tokens acota thinking + texto, así que vt5 necesita techo alto + streaming.
 _LONG_OUTPUT_TOKENS = {
@@ -269,15 +287,17 @@ def _example_file_messages(
                 "Referencia de calidad y estructura. No copies el contenido."
             )
         )
+        mt = ex.get("media_type") or "application/pdf"
+        kind = "image" if mt.startswith("image/") else "document"
         messages.append(
             {
                 "role": "user",
                 "content": [
                     {
-                        "type": "document",
+                        "type": kind,
                         "source": {
                             "type": "base64",
-                            "media_type": ex.get("media_type") or "application/pdf",
+                            "media_type": mt,
                             "data": ex["file_data"],
                         },
                     },
@@ -525,12 +545,22 @@ def extract_example_document(filename: str, raw: bytes) -> dict:
     is_pdf = lower.endswith(".pdf") or raw[:4] == b"%PDF"
     is_docx = lower.endswith(".docx")
     is_text = lower.endswith((".md", ".txt", ".csv", ".json"))
+    img_type = next((v for k, v in _IMAGE_TYPES.items() if lower.endswith(k)), None)
 
     content = ""
     media_type = None
     file_data = None
 
-    if is_text:
+    if img_type:
+        if len(raw) > _MAX_IMAGE_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"La imagen pesa {len(raw)//1_000_000}MB. El máximo es 5MB.",
+            )
+        media_type = img_type
+        file_data = base64.b64encode(raw).decode("ascii")
+        content = f"[Imagen adjunta: {name}]"
+    elif is_text:
         content = raw.decode("utf-8", errors="replace").strip()
     elif is_docx:
         content = _docx_bytes_to_text(raw)
@@ -554,7 +584,7 @@ def extract_example_document(filename: str, raw: bytes) -> dict:
     else:
         raise HTTPException(
             status_code=400,
-            detail="Formato no soportado. Usá .md, .txt, .docx o .pdf",
+            detail="Formato no soportado. Usá .md, .txt, .docx, .pdf o una imagen.",
         )
 
     if not content and not file_data:
@@ -621,7 +651,21 @@ def _user_message(text: str, files: list[AgentFile] | None = None) -> dict:
     blocks = []
     extracted = []
     for item in files:
-        if item.media_type == "application/pdf" and item.data:
+        if not item.data:
+            continue
+        # Las imágenes van siempre como bloque visual: no hay texto que extraer.
+        if (item.media_type or "").startswith("image/"):
+            blocks.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": item.media_type,
+                        "data": item.data,
+                    },
+                }
+            )
+        elif item.media_type == "application/pdf":
             pdf_text = _pdf_to_text(item.data)
             if len(pdf_text) >= _MIN_PDF_TEXT:
                 extracted.append(f"--- {item.name} ---\n{pdf_text}")
@@ -641,8 +685,11 @@ def _user_message(text: str, files: list[AgentFile] | None = None) -> dict:
         caption = "\n\n".join([p for p in (caption, *extracted) if p])
     if not caption and files:
         names = ", ".join(item.name for item in files)
+        solo_img = all((f.media_type or "").startswith("image/") for f in files)
         caption = (
-            f"Leé el documento adjunto ({names}) y ejecutá tu skill."
+            f"Mirá la imagen adjunta ({names}) y ejecutá tu skill sobre lo que ves."
+            if solo_img
+            else f"Leé el documento adjunto ({names}) y ejecutá tu skill."
         )
     if blocks:
         blocks.append({"type": "text", "text": caption})
@@ -989,3 +1036,85 @@ def delete_agent_example(example_id: int):
             raise HTTPException(status_code=404, detail="Example not found")
         example.delete()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Trabajos en segundo plano
+#
+# Una generación tarda entre 10s y varios minutos. Sostener eso en un HTTP
+# abierto significa que un wifi que se corta o una pestaña que se cierra
+# tiran a la basura tokens ya pagados. El navegador arranca el trabajo,
+# recibe un id al instante y después pregunta por el resultado.
+# ---------------------------------------------------------------------------
+
+# Si un trabajo quedó "running" más que esto, el proceso se cayó a mitad.
+_JOB_STALE_SECONDS = 20 * 60
+
+
+def create_job(kind: str, agent_id: str = "") -> str:
+    job_id = uuid.uuid4().hex
+    now = datetime.utcnow()
+    with db_session:
+        AgentJob(
+            id=job_id,
+            kind=kind,
+            status="running",
+            agent_id=agent_id or "",
+            created_at=now,
+            updated_at=now,
+        )
+    return job_id
+
+
+def _finish_job(job_id: str, *, session_id: int = 0, output: str = "", error: str = ""):
+    with db_session:
+        job = AgentJob.get(id=job_id)
+        if job is None:
+            return
+        job.status = "error" if error else "done"
+        job.session_id = session_id or 0
+        job.output = output or ""
+        job.error = (error or "")[:600]
+        job.updated_at = datetime.utcnow()
+
+
+def execute_run_job(job_id: str, client_id: str, agent_id: str, input_doc: str, files):
+    try:
+        res = run_agent(client_id, agent_id, input_doc, files)
+        _finish_job(job_id, session_id=res.session_id, output=res.output)
+    except HTTPException as exc:
+        _finish_job(job_id, error=str(exc.detail))
+    except Exception as exc:
+        traceback.print_exc()
+        _finish_job(job_id, error=f"{type(exc).__name__}: {exc}")
+
+
+def execute_chat_job(job_id: str, session_id: int, message: str, files):
+    try:
+        res = chat_agent(session_id, message, files)
+        _finish_job(job_id, session_id=res.session_id, output=res.reply)
+    except HTTPException as exc:
+        _finish_job(job_id, error=str(exc.detail))
+    except Exception as exc:
+        traceback.print_exc()
+        _finish_job(job_id, error=f"{type(exc).__name__}: {exc}")
+
+
+def get_job(job_id: str) -> dict:
+    with db_session:
+        job = AgentJob.get(id=job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Ese trabajo no existe o ya se limpió.")
+        status, error = job.status, str(job.error or "")
+        if status == "running":
+            edad = (datetime.utcnow() - job.updated_at).total_seconds()
+            if edad > _JOB_STALE_SECONDS:
+                status, error = "error", "El servidor se reinició mientras generaba. Volvé a intentar."
+                job.status, job.error = status, error
+        return {
+            "job_id": job.id,
+            "status": status,
+            "session_id": job.session_id or None,
+            "output": str(job.output or ""),
+            "error": error,
+        }

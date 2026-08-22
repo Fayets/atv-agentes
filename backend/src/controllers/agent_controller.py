@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, UploadFile
 from pydantic import BaseModel
 
 from src.schemas import (
@@ -7,6 +7,8 @@ from src.schemas import (
     AgentExampleCreate,
     AgentExampleResponse,
     AgentHistoryResponse,
+    AgentJobRef,
+    AgentJobStatus,
     AgentLatestSessionResponse,
     AgentRunRequest,
     AgentRunResponse,
@@ -31,16 +33,38 @@ class ClaudeKeyRequest(BaseModel):
     api_key: str
 
 
-@router.post("/run", response_model=AgentRunResponse)
-def run(payload: AgentRunRequest):
-    return agent_service.run_agent(
-        payload.client_id, payload.agent_id, payload.input_doc, payload.files
+@router.post("/run", response_model=AgentJobRef)
+def run(payload: AgentRunRequest, background: BackgroundTasks):
+    """Arranca la generación y devuelve al instante. El resultado se busca
+    en /jobs/{job_id} — una corrida puede tardar varios minutos."""
+    job_id = agent_service.create_job("run", payload.agent_id)
+    background.add_task(
+        agent_service.execute_run_job,
+        job_id,
+        payload.client_id,
+        payload.agent_id,
+        payload.input_doc,
+        payload.files,
     )
+    return AgentJobRef(job_id=job_id)
 
 
-@router.post("/chat", response_model=AgentChatResponse)
-def chat(payload: AgentChatRequest):
-    return agent_service.chat_agent(payload.session_id, payload.message, payload.files)
+@router.post("/chat", response_model=AgentJobRef)
+def chat(payload: AgentChatRequest, background: BackgroundTasks):
+    job_id = agent_service.create_job("chat")
+    background.add_task(
+        agent_service.execute_chat_job,
+        job_id,
+        payload.session_id,
+        payload.message,
+        payload.files,
+    )
+    return AgentJobRef(job_id=job_id)
+
+
+@router.get("/jobs/{job_id}", response_model=AgentJobStatus)
+def job_status(job_id: str):
+    return agent_service.get_job(job_id)
 
 
 @router.get("/history/{session_id}", response_model=AgentHistoryResponse)
