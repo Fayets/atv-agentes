@@ -75,6 +75,16 @@ class AgentJob(db.Entity):
     updated_at = Required(datetime)
 
 
+class ScrapeCache(db.Entity):
+    """Referencias ya leídas. Instagram se paga por resultado y el mismo perfil
+    de competencia se consulta muchas veces: no tiene sentido pagarlo dos veces."""
+
+    url = PrimaryKey(str)
+    platform = Required(str)          # "youtube" | "instagram"
+    content = Required(LongStr)
+    created_at = Required(datetime)
+
+
 class AgentExample(db.Entity):
     id = PrimaryKey(int, auto=True)
     agent_id = Required(str)

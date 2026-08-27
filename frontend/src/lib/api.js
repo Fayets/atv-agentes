@@ -457,6 +457,18 @@ export async function saveClaudeKey(apiKey) {
   });
 }
 
+export async function getApifyStatus() {
+  return realFetch("/api/agents/apify");
+}
+
+export async function saveApifyKey(apiKey) {
+  return realFetch("/api/agents/apify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+}
+
 export async function getAgentExamples(agentId) {
   return realFetch(`/api/agents/examples/${agentId}`);
 }

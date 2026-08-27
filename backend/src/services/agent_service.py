@@ -196,11 +196,17 @@ def _build_system_prompt(agent_id: str, cache: bool = False):
         # calidad" empeora el output en vez de mejorarlo.
         text_examples = []
     if text_examples:
+        # El encabezado es neutro a propósito: acá entran tanto outputs
+        # anteriores como material de referencia (fragmentos de calls, casos).
+        # Llamarlos a todos "outputs generados" desorienta al modelo — el
+        # título de cada ejemplo dice qué es.
         examples_block = (
-            "\n\n---\n\nEJEMPLOS DE OUTPUTS REALES\n\n"
-            "Los siguientes son ejemplos de outputs generados anteriormente. "
-            "Usálos como referencia de calidad, nivel de detalle y tono. "
-            "Nunca copies el contenido — solo el estilo y la estructura.\n\n"
+            "\n\n---\n\nMATERIAL DE REFERENCIA\n\n"
+            "Cada ítem indica en su título qué es. Los que dicen OUTPUT son "
+            "entregables anteriores: tomá de ahí el nivel de detalle y la "
+            "estructura. Los que dicen CASO son fragmentos reales de Juan "
+            "trabajando con un cliente: tomá de ahí el razonamiento y usalos "
+            "como prueba cuando apliquen. Nunca copies el contenido literal.\n\n"
         )
         for i, ex in enumerate(text_examples, 1):
             examples_block += f"EJEMPLO {i} — {ex['title']}:\n{ex['content']}\n\n"
@@ -681,6 +687,14 @@ def _user_message(text: str, files: list[AgentFile] | None = None) -> dict:
                     }
                 )
     caption = (text or "").strip()
+
+    # Referencias pegadas como enlace: se leen acá y viajan como texto, igual
+    # que un PDF. Si alguna falla vuelve el motivo y la corrida sigue igual.
+    if caption:
+        from src.services import scrape_service
+        for bloque in scrape_service.scrape_from_text(caption):
+            extracted.append(bloque)
+
     if extracted:
         caption = "\n\n".join([p for p in (caption, *extracted) if p])
     if not caption and files:

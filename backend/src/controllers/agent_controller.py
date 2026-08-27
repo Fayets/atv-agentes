@@ -15,7 +15,7 @@ from src.schemas import (
     AgentSessionListResponse,
     AgentSessionRenameRequest,
 )
-from src.services import agent_service
+from src.services import agent_service, scrape_service
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -30,6 +30,10 @@ class ToneSaveRequest(BaseModel):
 
 
 class ClaudeKeyRequest(BaseModel):
+    api_key: str
+
+
+class ApifyKeyRequest(BaseModel):
     api_key: str
 
 
@@ -126,6 +130,16 @@ def get_claude():
 @router.post("/claude")
 def save_claude(payload: ClaudeKeyRequest):
     return agent_service.save_claude_key(payload.api_key)
+
+
+@router.get("/apify")
+def get_apify():
+    return scrape_service.get_apify_status()
+
+
+@router.post("/apify")
+def save_apify(payload: ApifyKeyRequest):
+    return scrape_service.save_apify_key(payload.api_key)
 
 
 @router.get("/examples/{agent_id}", response_model=list[AgentExampleResponse])
