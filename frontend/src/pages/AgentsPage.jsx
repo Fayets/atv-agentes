@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import {
   CATEGORIES,
@@ -12,12 +13,16 @@ import {
   saveAgentConfig,
 } from "@/lib/api";
 import { DOCUMENT_ACCEPT, documentError } from "@/lib/read-document";
+import { findAgent } from "@/lib/agents";
+import { AgentAvatar } from "@/components/agent/AgentAvatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export default function AgentsPage() {
+  const [searchParams] = useSearchParams();
   const [agents, setAgents] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
+  // ?edit=mk1 llega desde el inicio o el plantel
+  const [selectedId, setSelectedId] = useState(() => searchParams.get("edit") || null);
   const [prompt, setPrompt] = useState("");
   const [savedPrompt, setSavedPrompt] = useState("");
   const [listLoading, setListLoading] = useState(true);
@@ -201,20 +206,28 @@ export default function AgentsPage() {
                         type="button"
                         onClick={() => handleSelect(agent.id)}
                         className={cn(
-                          "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
+                          "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
                           selectedId === agent.id
-                            ? "bg-primary/15 text-white"
+                            ? "bg-white/8 text-white"
                             : "text-white/65 hover:bg-white/5 hover:text-white"
                         )}
                       >
-                        <span className="min-w-0 truncate">{agent.name}</span>
+                        <AgentAvatar
+                          icon={findAgent(agent.id)?.agent.icon}
+                          category={agent.category}
+                          size={26}
+                        />
+                        <span className="min-w-0 flex-1 truncate">{agent.name}</span>
                         <span
                           className={cn(
-                            "size-1.5 shrink-0 rounded-full",
-                            agent.has_prompt ? "bg-primary" : "bg-white/20"
+                            "shrink-0 rounded-md border px-1.5 py-px text-[10px] tracking-wide",
+                            agent.has_prompt
+                              ? "border-white/10 text-white/45"
+                              : "border-primary/40 text-primary"
                           )}
-                          title={agent.has_prompt ? "Tiene documento" : "Sin documento"}
-                        />
+                        >
+                          {agent.has_prompt ? "doc" : "sin doc"}
+                        </span>
                       </button>
                     ))}
                   </div>

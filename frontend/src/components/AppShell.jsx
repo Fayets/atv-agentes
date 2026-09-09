@@ -1,29 +1,39 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   BookOpen,
+  Building2,
+  FileText,
   KeyRound,
   LogOut,
-  Map,
   PanelLeft,
+  Search,
   Sparkles,
   Users,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import * as api from "@/lib/api";
+import { findAgent } from "@/lib/agents";
 import { Button } from "@/components/ui/button";
+import CommandPalette from "@/components/CommandPalette";
+import AgentWorkspace from "@/components/agent/AgentWorkspace";
 import { cn } from "@/lib/utils";
+import "@/components/agent/agent-workspace.css";
+import "@/components/agent/agent-surfaces.css";
 
 /**
- * Dashboard Sidebar — paleta Charcoal Ink (21st.dev/@arunjdass).
+ * Cáscara de la app: barra lateral agrupada, ⌘K, y el workspace de un
+ * agente como capa encima de cualquier pantalla (?agent=mk1&session=12).
  */
-export default function AppShell({ children, onUpload, extra }) {
+export default function AppShell({ children }) {
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { clientId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [open, setOpen] = useState(true);
   const [mobile, setMobile] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 900px)");
@@ -36,6 +46,17 @@ export default function AppShell({ children, onUpload, extra }) {
     return () => mq.removeEventListener("change", apply);
   }, []);
 
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   async function handleLogout() {
     await api.logout();
     setUser(null);
@@ -43,24 +64,44 @@ export default function AppShell({ children, onUpload, extra }) {
   }
 
   const id = clientId || user?.client_id || "c1";
-  const mapHref = `/dashboard/${id}`;
-  const estiloHref = `/dashboard/${id}/estilo`;
-  const agentesHref = `/dashboard/${id}/agentes`;
-  const conexionHref = `/dashboard/${id}/conexion`;
-  const isMap = location.pathname === mapHref;
-  const isEstilo = location.pathname.startsWith(estiloHref);
-  const isAgentes = location.pathname.startsWith(agentesHref);
-  const isConexion = location.pathname.startsWith(conexionHref);
+  const base = `/dashboard/${id}`;
+  const path = location.pathname;
+  const is = (suffix) => (suffix ? path.startsWith(`${base}/${suffix}`) : path === base);
 
-  const nav = [
-    { to: mapHref, label: "Mapa", icon: Map, active: isMap && !isEstilo && !isAgentes && !isConexion },
-    { to: estiloHref, label: "Estilo", icon: BookOpen, active: isEstilo },
-    { to: agentesHref, label: "Agentes", icon: Sparkles, active: isAgentes },
-    { to: conexionHref, label: "Claude", icon: KeyRound, active: isConexion },
-    ...(user?.role === "superadmin"
-      ? [{ to: "/clients", label: "Clientes", icon: Users, active: location.pathname === "/clients" }]
-      : []),
+  const groups = [
+    {
+      label: null,
+      items: [{ to: base, label: "Inicio", icon: Sparkles, active: is("") }],
+    },
+    {
+      label: "Agentes",
+      items: [
+        { to: `${base}/plantel`, label: "Plantel", icon: Users, active: is("plantel") },
+        { to: `${base}/agentes`, label: "Documentos", icon: FileText, active: is("agentes") },
+      ],
+    },
+    {
+      label: "Recursos",
+      items: [
+        { to: `${base}/estilo`, label: "Estilo", icon: BookOpen, active: is("estilo") },
+        { to: `${base}/conexion`, label: "Conexión", icon: KeyRound, active: is("conexion") },
+        ...(user?.role === "superadmin"
+          ? [{ to: "/clients", label: "Clientes", icon: Building2, active: path === "/clients" }]
+          : []),
+      ],
+    },
   ];
+
+  // workspace como capa: ?agent=mk1[&session=12]
+  const agentParam = searchParams.get("agent");
+  const sessionParam = searchParams.get("session");
+  const found = agentParam ? findAgent(agentParam) : null;
+  const closeAgent = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("agent");
+    next.delete("session");
+    setSearchParams(next, { replace: true });
+  };
 
   return (
     <div className="app-shell">
@@ -77,10 +118,7 @@ export default function AppShell({ children, onUpload, extra }) {
         className={cn(
           "z-40 flex h-full shrink-0 flex-col border-r border-white/8 bg-[#0a0a0a] transition-[width,transform] duration-200",
           mobile
-            ? cn(
-                "fixed inset-y-0 left-0 w-64",
-                open ? "translate-x-0" : "-translate-x-full"
-              )
+            ? cn("fixed inset-y-0 left-0 w-64", open ? "translate-x-0" : "-translate-x-full")
             : open
               ? "w-60"
               : "w-[68px]"
@@ -101,29 +139,33 @@ export default function AppShell({ children, onUpload, extra }) {
           ) : null}
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1 px-2 py-3">
-          {nav.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                onClick={() => mobile && setOpen(false)}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors",
-                  item.active
-                    ? "bg-primary/15 text-white"
-                    : "text-white/55 hover:bg-white/5 hover:text-white"
-                )}
-              >
-                <Icon className="size-4 shrink-0" />
-                {open || mobile ? <span>{item.label}</span> : null}
-              </Link>
-            );
-          })}
-
-
-          {extra && (open || mobile) ? <div className="mt-2 px-1">{extra}</div> : null}
+        <nav className="flex flex-1 flex-col px-2 py-2">
+          {groups.map((g, gi) => (
+            <div key={gi} className="flex flex-col gap-0.5">
+              {g.label && (open || mobile) ? <p className="nav-group">{g.label}</p> : null}
+              {g.label && !(open || mobile) ? <div className="my-2 h-px bg-white/8" /> : null}
+              {g.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => mobile && setOpen(false)}
+                    title={item.label}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors",
+                      item.active
+                        ? "bg-primary/15 text-white"
+                        : "text-white/55 hover:bg-white/5 hover:text-white"
+                    )}
+                  >
+                    <Icon className="size-4 shrink-0" />
+                    {open || mobile ? <span>{item.label}</span> : null}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         {user ? (
@@ -151,20 +193,45 @@ export default function AppShell({ children, onUpload, extra }) {
 
       <div className="app-shell__body">
         <header className="app-shell__header">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Menú"
-            onClick={() => setOpen((v) => !v)}
-          >
+          <Button variant="ghost" size="icon" aria-label="Menú" onClick={() => setOpen((v) => !v)}>
             <PanelLeft className="size-4" />
           </Button>
           <span className="text-sm text-white/50">Grounded</span>
+          <div className="ml-auto">
+            <button
+              type="button"
+              className="cmdk-trigger"
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Buscar agente o pantalla"
+            >
+              <Search className="size-3.5" />
+              <span className="hidden sm:inline">Buscar agente…</span>
+              <kbd>⌘</kbd>
+              <kbd>K</kbd>
+            </button>
+          </div>
         </header>
         <main className="app-shell__main">
           <div className="app-shell__fill">{children}</div>
         </main>
       </div>
+
+      {found ? (
+        <AgentWorkspace
+          key={`${found.agent.id}-${sessionParam || ""}`}
+          agent={found.agent}
+          category={found.category}
+          initialSessionId={sessionParam ? Number(sessionParam) : null}
+          onClose={closeAgent}
+        />
+      ) : null}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        clientId={id}
+        isSuperadmin={user?.role === "superadmin"}
+      />
     </div>
   );
 }

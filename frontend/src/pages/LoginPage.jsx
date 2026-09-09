@@ -68,7 +68,7 @@ export default function LoginPage() {
             un <span className="text-primary">árbol vivo.</span>
           </h1>
           <p className="mt-3 mb-8 text-sm leading-relaxed text-muted-foreground">
-            Entrá al mapa de agentes, cargá documentos y dejá que Grounded trabaje sobre la base del cliente.
+            Entrá al panel de agentes, cargá documentos y dejá que Grounded trabaje sobre la base del cliente.
           </p>
           <SignInForm onSubmit={handleSubmit} error={error} submitting={submitting} />
         </div>

@@ -42,6 +42,7 @@ AGENT_META = {
     "mk3": {"name": "Optimización de Perfil", "category": "marketing"},
     "mk4": {"name": "Estrategia de Contenido", "category": "marketing"},
     "mk5": {"name": "YouTube / Creator", "category": "marketing"},
+    "mk6": {"name": "Reel Creator", "category": "marketing"},
     "bs1": {"name": "Oferta y Escalera de Valor", "category": "bases"},
     "vt1": {"name": "Proceso de Setting", "category": "ventas"},
     "vt2": {"name": "Proceso de Preaudit (trigger)", "category": "ventas"},
@@ -76,7 +77,11 @@ _MAX_IMAGE_BYTES = 5_000_000
 # Un deck 1920x1080 de 10-16 slides con CSS inline son 12k-20k tokens.
 # max_tokens acota thinking + texto, así que vt5 necesita techo alto + streaming.
 _LONG_OUTPUT_TOKENS = {
-    "mk1": 5000,
+    # Un calendario completo (7 historias + reels + YouTube + resumen) y un
+    # guion largo de YouTube no entran en 4–5k tokens: salían cortados.
+    "mk1": 12000,
+    "mk5": 9000,
+    "mk2": 6000,
     "vt5": 64000,
 }
 # Por encima de este techo el SDK exige streaming (si no, timeout HTTP).
@@ -456,9 +461,11 @@ def get_agent_system_prompt(agent_id: str) -> str:
         if default and "El tono de voz global ya viene" in stored:
             row.system_prompt = default
             return default
-        if default and "SOP —" in default and "SOP —" not in stored:
-            row.system_prompt = default
-            return default
+        # Antes había acá una regla que pisaba lo guardado con el archivo del
+        # repo si el archivo decía "SOP —" y lo guardado no. Era una migración
+        # de una sola vez que quedó viva: cada edición de mk1 desde la interfaz
+        # se revertía en la lectura siguiente. Lo que se guarda desde la UI
+        # manda; el archivo del repo es solo el valor inicial.
         # Adopción única del prompt canónico del repo. Hasta ahora estos agentes
         # vivían con lo pegado desde la UI — en el caso de bs1, con el documento
         # de investigación previo en vez de un prompt. Una vez adoptado, el

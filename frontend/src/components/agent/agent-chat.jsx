@@ -1,10 +1,35 @@
 import { useEffect, useRef, useState } from "react";
-import { Paperclip, Sparkles } from "lucide-react";
+import { ChevronDown, Paperclip, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AIInput } from "@/components/kokonut/ai-input";
+import { AgentAvatar } from "@/components/agent/AgentAvatar";
+import { formatChars } from "@/lib/agents";
 import { documentError, fileToApiAttachment, readDocumentFile } from "@/lib/read-document";
 
 let attachSeq = 0;
+const BRIEF_FOLD_CHARS = 520;
+
+/** Lo que mandó el operador: tarjeta plegable con etiqueta, para que no se confunda con la respuesta. */
+function UserBrief({ content }) {
+  const text = String(content || "");
+  const long = text.length > BRIEF_FOLD_CHARS;
+  const [open, setOpen] = useState(!long);
+  return (
+    <div className="ws-brief">
+      <div className="ws-brief__head">
+        <span className="ws-brief__who">Vos</span>
+        <span className="ws-brief__meta">{formatChars(text.length)} chars</span>
+        {long ? (
+          <button type="button" className="ws-brief__toggle" onClick={() => setOpen((v) => !v)}>
+            {open ? "Ocultar" : "Ver completo"}
+            <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />
+          </button>
+        ) : null}
+      </div>
+      <div className={cn("ws-brief__body", !open && "is-folded")}>{text}</div>
+    </div>
+  );
+}
 
 /**
  * Agent Chat — inspirado en Agent Elements (21st.dev/@21st)
@@ -21,6 +46,7 @@ export function AgentChat({
   layout = "chat",
   afterMessages = null,
   className,
+  speaker = null,
 }) {
   const isDocument = layout === "document";
   const listRef = useRef(null);
@@ -136,26 +162,33 @@ export function AgentChat({
             ) : null}
           </div>
         ) : isDocument ? (
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-6 py-10 md:px-10">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-8 md:px-10">
             {messages.map((m) =>
               m.role === "user" ? (
-                <div key={m.id} className="flex justify-end">
-                  <div className="max-w-[min(85%,520px)] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-white/8 px-4 py-2.5 text-sm leading-relaxed text-white/90">
-                    {m.content}
-                  </div>
-                </div>
+                <UserBrief key={m.id} content={m.content} />
               ) : (
-                <div key={m.id} className="w-full text-[0.9rem] leading-relaxed text-white/88">
-                  {m.content}
+                <div key={m.id} className="ws-reply" style={{ "--c": speaker?.color }}>
+                  <div className="ws-reply__head">
+                    <AgentAvatar icon={speaker?.icon} category={speaker?.category} size={26} />
+                    <span className="ws-reply__who">Juan Cruz AI</span>
+                    {speaker?.name ? <span className="ws-reply__agent">· {speaker.name}</span> : null}
+                  </div>
+                  <div className="ws-reply__body">{m.content}</div>
                 </div>
               )
             )}
             {loading ? (
-              <div className="flex items-center gap-2 text-sm text-white/45">
-                <span className="size-1.5 animate-bounce rounded-full bg-white/40 [animation-delay:-0.2s]" />
-                <span className="size-1.5 animate-bounce rounded-full bg-white/40 [animation-delay:-0.1s]" />
-                <span className="size-1.5 animate-bounce rounded-full bg-white/40" />
-                <span className="ml-1">Escribiendo…</span>
+              <div className="ws-reply is-thinking" style={{ "--c": speaker?.color }}>
+                <div className="ws-reply__head">
+                  <AgentAvatar icon={speaker?.icon} category={speaker?.category} size={26} />
+                  <span className="ws-reply__who">Juan Cruz AI</span>
+                  <span className="ws-reply__agent">· escribiendo</span>
+                </div>
+                <div className="ws-reply__body flex items-center gap-2 text-sm text-white/45">
+                  <span className="size-1.5 animate-bounce rounded-full bg-white/40 [animation-delay:-0.2s]" />
+                  <span className="size-1.5 animate-bounce rounded-full bg-white/40 [animation-delay:-0.1s]" />
+                  <span className="size-1.5 animate-bounce rounded-full bg-white/40" />
+                </div>
               </div>
             ) : afterMessages ? (
               <div className="pt-2">{afterMessages}</div>

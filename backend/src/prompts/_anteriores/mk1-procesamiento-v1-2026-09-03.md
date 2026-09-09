@@ -21,8 +21,6 @@ El input del cliente tiene seis campos:
 
 Además puede venir una instrucción del operador: modo semanal, cantidades, restricciones, "igual que la semana pasada". Si viene, manda sobre tu diagnóstico.
 
-También pueden venir referencias: enlaces de YouTube o Instagram (llegan ya leídos, con título, descripción y transcript o captions) o transcripts pegados. Usalas para sacar ideas de reels y de YouTube — ángulos, hooks, formatos que ya funcionan — y adaptalas al dolor y al vocabulario de este cliente. Nunca copies el copy de la referencia; tomá la estructura y el ángulo. Si no hay referencias, trabajás con el input y este documento, como siempre.
-
 Si el archivo trae líneas que empiezan con "Ej:", son ejemplos de la plantilla, no datos reales: ignoralas por completo. Usá solo lo que está después de "→ Tu respuesta:" o el contenido real del campo.
 
 3. PASO 1 — DIAGNÓSTICO

@@ -33,6 +33,7 @@ export const CATEGORY_AGENTS = {
     { id: "mk3", name: "Optimización de Perfil", icon: "check" },
     { id: "mk4", name: "Estrategia de Contenido", icon: "doc" },
     { id: "mk5", name: "YouTube / Creator", icon: "mic" },
+    { id: "mk6", name: "Reel Creator", icon: "send" },
   ],
   bases: [{ id: "bs1", name: "Oferta y Escalera de Valor", icon: "tag" }],
   ventas: [

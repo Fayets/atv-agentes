@@ -1,0 +1,1204 @@
+/* =========================================================
+   Agent Workspace — tres columnas: sesiones · conversación · actividad
+   Paleta: negro, blanco al 8%, rojo ATV. --agent = color de la categoría.
+   ========================================================= */
+
+.ws-page {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr) auto;
+  background: #000;
+  color: #fafafa;
+  font-family: "Poppins", system-ui, sans-serif;
+  animation: ws-in 0.22s ease-out;
+}
+
+@keyframes ws-in {
+  from {
+    opacity: 0;
+    transform: scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- utilidades compartidas ---------- */
+.ws-kicker {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.ws-mono {
+  font-family: "Poppins", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.ws-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+}
+
+.ws-iconbtn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.ws-iconbtn:hover:not(:disabled) {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ws-iconbtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.ws-iconbtn--text {
+  width: auto;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* Imprimir = guardar como PDF: queda solo la conversación, en papel blanco. */
+@media print {
+  .ws-page {
+    position: static;
+    display: block;
+    background: #fff;
+    color: #111;
+    animation: none;
+  }
+  .ws-rail,
+  .ws-activity,
+  .ws-topbar,
+  .ws-ctx,
+  .ws-brief__toggle,
+  .ws-conversation form,
+  .ws-conversation [class*="border-t"] {
+    display: none !important;
+  }
+  .ws-conversation,
+  .ws-conversation > * {
+    display: block;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  .ws-brief {
+    border-color: #ccc;
+    background: #f4f4f4;
+    color: #111;
+    width: 100%;
+  }
+  .ws-brief__body,
+  .ws-brief__who,
+  .ws-brief__meta,
+  .ws-reply__who,
+  .ws-reply__agent,
+  .ws-reply__body,
+  .ws-md,
+  .ws-md__h1,
+  .ws-md__h2,
+  .ws-md__h3,
+  .ws-md__strong,
+  .ws-md__quote {
+    color: #111 !important;
+  }
+  .ws-brief__body.is-folded {
+    max-height: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .ws-md__table th,
+  .ws-md__table td {
+    border-color: #bbb;
+  }
+  .ws-md__table th {
+    background: #eee;
+  }
+  .ws-md__code {
+    background: #eee;
+  }
+  .ws-reply::before {
+    background: #999;
+  }
+  .ws-deck {
+    display: none;
+  }
+}
+
+.ws-iconbtn.is-on {
+  color: var(--agent, #e11d2e);
+  border-color: color-mix(in srgb, var(--agent, #e11d2e) 45%, transparent);
+  background: color-mix(in srgb, var(--agent, #e11d2e) 12%, transparent);
+}
+
+kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  font-family: "Poppins", system-ui, sans-serif;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ---------- rail izquierdo ---------- */
+.ws-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px 12px 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(120% 60% at 0% 0%, color-mix(in srgb, var(--agent, #e11d2e) 10%, transparent), transparent 60%),
+    #070707;
+}
+
+.ws-rail__identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 4px 0;
+}
+
+.ws-rail__name {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: rgba(255, 255, 255, 0.94);
+}
+
+.ws-rail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.ws-rail__new {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--agent, #e11d2e) 40%, transparent);
+  background: color-mix(in srgb, var(--agent, #e11d2e) 12%, transparent);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.ws-rail__new:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--agent, #e11d2e) 20%, transparent);
+  border-color: color-mix(in srgb, var(--agent, #e11d2e) 60%, transparent);
+}
+
+.ws-rail__new:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ws-rail__label {
+  margin: 6px 4px 0;
+}
+
+.ws-rail__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 2px;
+}
+
+.ws-rail__empty {
+  margin: 6px 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.32);
+}
+
+.ws-rail__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 4px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ws-rail__client {
+  margin: 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-rail__esc {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.32);
+  white-space: nowrap;
+}
+
+.ws-session {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  color: rgba(255, 255, 255, 0.7);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ws-session:hover {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ws-session.is-active {
+  border-color: color-mix(in srgb, var(--agent, #e11d2e) 40%, transparent);
+  background: color-mix(in srgb, var(--agent, #e11d2e) 9%, transparent);
+}
+
+.ws-session__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ws-session__date {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.ws-session__del {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.35);
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.ws-session:hover .ws-session__del {
+  opacity: 1;
+}
+
+.ws-session__del:hover {
+  color: #e11d2e;
+}
+
+.ws-session__preview {
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-session__rename {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 2px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--agent, #e11d2e) 55%, transparent);
+  background: #111;
+  color: #fff;
+  font-size: 12px;
+  outline: none;
+}
+
+.ws-ctx {
+  position: fixed;
+  z-index: 2000;
+  min-width: 148px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #161618;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+}
+
+.ws-ctx button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ws-ctx button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ws-ctx button.is-danger {
+  color: #ff6b76;
+}
+
+/* ---------- centro ---------- */
+.ws-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #000;
+}
+
+.ws-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  flex-shrink: 0;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.ws-topbar__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  font-size: 13px;
+}
+
+.ws-topbar__avatar {
+  border-radius: 7px !important;
+}
+
+.ws-topbar__name {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: nowrap;
+}
+
+.ws-topbar__sep {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.ws-topbar__session {
+  color: rgba(255, 255, 255, 0.5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ws-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  margin-right: 4px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--agent, #e11d2e) 45%, transparent);
+  background: color-mix(in srgb, var(--agent, #e11d2e) 12%, transparent);
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ws-conversation {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ws-conversation > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.ws-restoring {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ---------- quién habla: brief del operador vs respuesta del agente ---------- */
+.ws-brief {
+  align-self: flex-end;
+  width: min(100%, 640px);
+  border-radius: 16px 16px 4px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #17171a;
+  overflow: hidden;
+}
+
+.ws-brief__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 12px 0 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+}
+
+.ws-brief__who {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.ws-brief__meta {
+  color: rgba(255, 255, 255, 0.35);
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-brief__toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ws-brief__toggle:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ws-brief__body {
+  padding: 12px 14px 14px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.78);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ws-brief__body.is-folded {
+  max-height: 9.6em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent);
+  mask-image: linear-gradient(180deg, #000 55%, transparent);
+}
+
+.ws-reply {
+  position: relative;
+  padding-left: 18px;
+}
+
+.ws-reply::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 34px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--c, #e11d2e), color-mix(in srgb, var(--c, #e11d2e) 25%, transparent));
+}
+
+.ws-reply__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px -18px;
+  font-size: 13px;
+}
+
+.ws-reply__who {
+  font-weight: 600;
+  color: #fff;
+}
+
+.ws-reply__agent {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.ws-reply__body {
+  font-size: 0.9rem;
+  line-height: 1.75;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.ws-reply.is-thinking::before {
+  opacity: 0.4;
+}
+
+/* ---------- salida en markdown ---------- */
+.ws-md {
+  font-size: 0.95rem;
+  line-height: 1.75;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.ws-md__p {
+  margin: 0 0 0.8rem;
+}
+
+.ws-md__h1,
+.ws-md__h2,
+.ws-md__h3 {
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.ws-md__h1 {
+  font-size: 1.15rem;
+  margin: 1.4rem 0 0.6rem;
+}
+
+.ws-md__h2 {
+  font-size: 1rem;
+  margin: 1.3rem 0 0.5rem;
+}
+
+.ws-md__h3 {
+  font-size: 0.92rem;
+  margin: 1rem 0 0.4rem;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.ws-md__ul,
+.ws-md__ol {
+  padding-left: 1.25rem;
+  margin: 0 0 0.8rem;
+}
+
+.ws-md__li {
+  margin-bottom: 0.3rem;
+}
+
+.ws-md__strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.ws-md__hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 1.2rem 0;
+}
+
+.ws-md__quote {
+  margin: 0 0 0.8rem;
+  padding: 0.2rem 0 0.2rem 0.9rem;
+  border-left: 2px solid color-mix(in srgb, var(--agent, #e11d2e) 70%, transparent);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.ws-md__code {
+  background: #151517;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.82em;
+}
+
+.ws-md__tablewrap {
+  overflow-x: auto;
+  margin: 0 0 0.9rem;
+}
+
+.ws-md__table {
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  min-width: 100%;
+}
+
+.ws-md__table th,
+.ws-md__table td {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ws-md__table th {
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ---------- deck (vt5) ---------- */
+.ws-deck {
+  margin-top: 0.85rem;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #000;
+}
+
+.ws-deck__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ws-deck__bar p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.ws-deck__actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.ws-deck__actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.72rem;
+}
+
+.ws-deck__actions button.is-primary {
+  background: #e11d2e;
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.ws-deck__frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 62vh;
+  background: #0a0a0a;
+}
+
+.ws-deck__frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #0a0a0a;
+}
+
+/* ---------- actividad ---------- */
+.ws-activity {
+  display: flex;
+  flex-direction: column;
+  width: 316px;
+  min-height: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: #070707;
+  animation: ws-slide 0.2s ease-out;
+}
+
+@keyframes ws-slide {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ws-activity__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  height: 56px;
+  padding: 12px 12px 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.ws-activity__state {
+  margin: 3px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.ws-activity__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ws-activity__empty p {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.ws-facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+
+.ws-facts > div {
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.ws-facts dt {
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.ws-facts dd {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ws-step {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 0 0 16px;
+}
+
+.ws-step::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 20px;
+  bottom: -2px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ws-step:last-child::before {
+  display: none;
+}
+
+.ws-step__dot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #0d0d0f;
+  color: rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
+}
+
+.ws-step__idle {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.ws-step.is-running .ws-step__dot {
+  color: #fff;
+  border-color: color-mix(in srgb, var(--agent, #e11d2e) 70%, transparent);
+  background: color-mix(in srgb, var(--agent, #e11d2e) 22%, #0d0d0f);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--agent, #e11d2e) 14%, transparent);
+}
+
+.ws-step.is-done .ws-step__dot {
+  color: #0b0b0b;
+  border-color: transparent;
+  background: var(--agent, #e11d2e);
+}
+
+.ws-step.is-error .ws-step__dot {
+  color: #fff;
+  border-color: transparent;
+  background: #e11d2e;
+}
+
+.ws-step__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.ws-step__label {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.ws-step.is-running .ws-step__label,
+.ws-step.is-done .ws-step__label {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.ws-step.is-running .ws-step__label {
+  font-weight: 500;
+}
+
+.ws-step__detail {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.38);
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-alert {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(225, 29, 46, 0.4);
+  background: rgba(225, 29, 46, 0.1);
+  color: #ffb3b9;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ws-alert p {
+  margin: 0;
+}
+
+.ws-sources ul,
+.ws-runs ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ws-sources li,
+.ws-runs li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.ws-sources li svg {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.ws-sources a {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.ws-sources a:hover {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ws-runs__kind {
+  flex: 1;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ws-runs li.is-error {
+  border-color: rgba(225, 29, 46, 0.35);
+}
+
+/* ---------- ⌘K ---------- */
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: min(18vh, 160px);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: ws-in 0.14s ease-out;
+}
+
+.cmdk {
+  width: min(600px, calc(100vw - 32px));
+  max-height: min(60vh, 520px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0c0c0e;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.6);
+  font-family: "Poppins", system-ui, sans-serif;
+}
+
+.cmdk__input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cmdk__input input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  color: #fff;
+}
+
+.cmdk__input input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.cmdk__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.cmdk__group {
+  margin: 8px 8px 4px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.cmdk__empty {
+  margin: 18px 10px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.cmdk-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cmdk-row.is-active {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+.cmdk-row__page {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
+}
+
+.cmdk-row__label {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmdk-row__hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  white-space: nowrap;
+}
+
+.cmdk__foot {
+  display: flex;
+  gap: 16px;
+  height: 36px;
+  align-items: center;
+  padding: 0 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.cmdk__foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ---------- disparador ⌘K en el header ---------- */
+.cmdk-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px 0 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.cmdk-trigger:hover {
+  color: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.cmdk-trigger kbd {
+  height: 18px;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 1100px) {
+  .ws-activity {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 5;
+    box-shadow: -20px 0 50px rgba(0, 0, 0, 0.6);
+  }
+}
+
+@media (max-width: 900px) {
+  .ws-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ws-rail {
+    display: none;
+  }
+
+  .ws-activity {
+    width: min(316px, 90vw);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-page,
+  .ws-activity,
+  .cmdk-overlay {
+    animation: none;
+  }
+}

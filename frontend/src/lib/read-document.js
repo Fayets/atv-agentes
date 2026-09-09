@@ -62,5 +62,13 @@ export async function readDocumentFile(file) {
   const ext = extOf(file);
   if (TEXT_EXT.includes(ext)) return (await file.text()).trim();
   if (IMAGE_TYPES[ext]) return `[Imagen adjunta: ${file.name}]`;
+  if (ext === ".docx") {
+    // El navegador no lee .docx; lo extrae el backend con el mismo endpoint
+    // que usan los ejemplos. Antes este caso devolvía solo el nombre del
+    // archivo y el contenido nunca llegaba al agente.
+    const { extractExampleDocument } = await import("./api");
+    const data = await extractExampleDocument(file);
+    return String(data?.content || "").trim() || `[Archivo adjunto sin texto: ${file.name}]`;
+  }
   return `[Archivo adjunto: ${file.name}]`;
 }
