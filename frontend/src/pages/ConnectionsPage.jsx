@@ -32,9 +32,18 @@ export default function ConnectionsPage() {
   const load = () => {
     setLoading(true);
     setError("");
-    getClaudeStatus()
-      .then(setStatus)
-      .catch(() => setError("No se pudo leer el estado. ¿Está corriendo el backend?"))
+    // Antes esto solo preguntaba por Claude: el estado de Apify quedaba en
+    // null al entrar y la pantalla decía "Sin conectar" aunque el token
+    // estuviera guardado. Solo se veía bien justo después de guardarlo.
+    Promise.all([
+      getClaudeStatus().catch(() => null),
+      getApifyStatus().catch(() => null),
+    ])
+      .then(([claude, apify]) => {
+        setStatus(claude);
+        setApifyStatus(apify);
+        if (!claude) setError("No se pudo leer el estado. ¿Está corriendo el backend?");
+      })
       .finally(() => setLoading(false));
   };
 
