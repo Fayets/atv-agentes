@@ -7,5 +7,10 @@ anthropic>=1.0.0
 pypdf
 python-jose[cryptography]
 passlib[bcrypt]
+# passlib 1.7.4 no soporta bcrypt >= 4.1: en el arranque corre una
+# autodetección que le pasa a bcrypt una contraseña de más de 72 bytes, y
+# las versiones nuevas tiran ValueError en vez de truncarla. Resultado: todo
+# login devuelve 500. Sin este pin, cada rebuild vuelve a romper el login.
+bcrypt<4.1
 python-multipart
 yt-dlp
